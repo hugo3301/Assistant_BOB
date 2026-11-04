@@ -1,21 +1,9 @@
 import {Buffer} from 'node:buffer';
 import {BobError,requireThat} from './errors.mjs';
 import {FREE_POLICY} from './control.mjs';
+import {opusDuration} from './ogg-opus.mjs';
+export {opusDuration,inspectOpus} from './ogg-opus.mjs';
 
-export function opusDuration(bytes){
- const buffer=Buffer.from(bytes);let offset=0,serial=null,preSkip=null,granule=0n,eos=false;
- while(offset<buffer.length){
-  requireThat(offset+27<=buffer.length&&buffer.toString('ascii',offset,offset+4)==='OggS'&&buffer[offset+4]===0,'VOICE_FORMAT','Не получилось прочитать запись. Пришли обычное голосовое сообщение Telegram.');
-  const segments=buffer[offset+26],header=27+segments;requireThat(offset+header<=buffer.length,'VOICE_FORMAT','Голосовое повреждено. Попробуй отправить заново.');
-  const length=buffer.subarray(offset+27,offset+header).reduce((sum,value)=>sum+value,0),end=offset+header+length;requireThat(end<=buffer.length,'VOICE_FORMAT','Голосовое повреждено. Попробуй отправить заново.');
-  const currentSerial=buffer.readUInt32LE(offset+14);if(serial===null)serial=currentSerial;requireThat(serial===currentSerial,'VOICE_FORMAT','В записи несколько звуковых дорожек. Пришли обычное голосовое.');
-  if(preSkip===null){requireThat(length>=19&&buffer.toString('ascii',offset+header,offset+header+8)==='OpusHead','VOICE_FORMAT','Нужна голосовая запись OGG/Opus из Telegram.');preSkip=buffer.readUInt16LE(offset+header+10);}
-  const position=buffer.readBigUInt64LE(offset+6);if(position!==0xffffffffffffffffn){requireThat(position>=granule,'VOICE_FORMAT','В записи повреждена временная шкала.');granule=position;}
-  if(buffer[offset+5]&4)eos=true;offset=end;
- }
- requireThat(eos&&preSkip!==null&&granule>BigInt(preSkip),'VOICE_EMPTY','В записи нет звука. Попробуй записать ещё раз.');
- const seconds=Number(granule-BigInt(preSkip))/48000;requireThat(seconds<=FREE_POLICY.voiceSeconds+0.1,'VOICE_LENGTH','Голосовое длиннее 2 минут. Раздели его на несколько коротких сообщений.');return seconds;
-}
 export function transcription(payload){
  const result=payload.result??payload,text=String(result.text??'').trim().replace(/\s+/gu,' '),segments=result.segments??[],count=segments.filter(segment=>segment.no_speech_prob!==undefined||segment.avg_logprob!==undefined).length;
  const uncertain=count>0&&segments.filter(segment=>(segment.no_speech_prob??0)>=0.6||(segment.avg_logprob??0)<-1).length>=count/2;
