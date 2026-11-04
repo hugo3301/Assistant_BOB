@@ -16,7 +16,8 @@
     "design:catalog": "node scripts/render-design-catalog.mjs docs/design-catalog.html"
   },
   "dependencies": {
-    "ical.js": "2.2.1"
+    "ical.js": "2.2.1",
+    "saxes": "6.0.0"
   },
   "devDependencies": {
     "miniflare": "5.20261103.0-beta",

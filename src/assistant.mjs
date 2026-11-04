@@ -77,7 +77,7 @@ export class Assistant {
             try{const explicit=resolveDate(phrase,{now:referenceAt,timezone:user.timezone,allowPast:true});if(!explicit.at&&target.at&&!part)contextText+='\nПрежнее время выбранного дела: в '+new Intl.DateTimeFormat('en',{timeZone:user.timezone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(target.at));}
             catch(error){if(error.code==='DATE_MISSING'&&targetDay){try{const probe=resolveDate(phrase,{now:referenceAt,timezone:user.timezone,contextText:targetDay,allowPast:true});if(probe.at||part)contextText+='\nПрежний день выбранного дела: '+targetDay;}catch{}}}
           }
-          date = resolveDate(phrase, { now: referenceAt, timezone: user.timezone, requireTime: field === 'when_text', contextText, defaultToday: field === 'when_text' });
+          date = resolveDate(phrase, { now: referenceAt, timezone: user.timezone, requireTime: field === 'when_text'&&!target?.all_day, contextText, defaultToday: field === 'when_text' });
           requireThat(!date.at || date.at > this.clock(), 'DATE_IN_PAST', 'Это время уже прошло. Укажи новую дату.');
         } catch (error) { error.details = { ...error.details, index, field }; throw error; }
       }

@@ -25,6 +25,7 @@ export class CoreStore {
       CREATE TABLE IF NOT EXISTS ui_views(token TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,expires_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ui_state(owner TEXT PRIMARY KEY,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ui_profiles(owner TEXT PRIMARY KEY,onboarding INTEGER NOT NULL DEFAULT 0,morning_from TEXT);
+      CREATE TABLE IF NOT EXISTS calendar_item_meta(item_id TEXT PRIMARY KEY,calendar_connection_id TEXT NOT NULL,all_day INTEGER NOT NULL DEFAULT 0,end_day TEXT,source_day TEXT);
       CREATE TABLE IF NOT EXISTS action_records(token TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,state TEXT NOT NULL);
 `);
     this.db.prepare('INSERT OR IGNORE INTO bob_schema VALUES (1)').run();
@@ -57,9 +58,9 @@ export class CoreStore {
     return this.user(owner);
   }
   items(owner, { includeClosed = false } = {}) {
-    return this.db.prepare(`SELECT items.*,item_context.project,COALESCE(item_context.area,'Личное') AS area,item_context.series_id,COALESCE(item_time_meta.approximate,0) AS approximate FROM items LEFT JOIN item_context ON item_context.item_id=items.id LEFT JOIN item_time_meta ON item_time_meta.item_id=items.id WHERE items.owner=? ${includeClosed ? '' : "AND items.status='open'"} ORDER BY COALESCE(at,day,'9999'),created_at,id`).all(owner);
+    return this.db.prepare(`SELECT items.*,item_context.project,COALESCE(item_context.area,'Личное') AS area,item_context.series_id,item_context.source_key,COALESCE(item_time_meta.approximate,0) AS approximate,calendar_item_meta.calendar_connection_id,calendar_item_meta.all_day,calendar_item_meta.end_day,calendar_item_meta.source_day FROM items LEFT JOIN item_context ON item_context.item_id=items.id LEFT JOIN item_time_meta ON item_time_meta.item_id=items.id LEFT JOIN calendar_item_meta ON calendar_item_meta.item_id=items.id WHERE items.owner=? ${includeClosed ? '' : "AND items.status='open'"} ORDER BY COALESCE(at,day,'9999'),created_at,id`).all(owner);
   }
-  item(owner, id) { return this.db.prepare("SELECT items.*,item_context.project,COALESCE(item_context.area,'Личное') AS area,item_context.series_id,COALESCE(item_time_meta.approximate,0) AS approximate FROM items LEFT JOIN item_context ON item_context.item_id=items.id LEFT JOIN item_time_meta ON item_time_meta.item_id=items.id WHERE items.owner=? AND items.id=?").get(owner, id); }
+  item(owner, id) { return this.db.prepare("SELECT items.*,item_context.project,COALESCE(item_context.area,'Личное') AS area,item_context.series_id,item_context.source_key,COALESCE(item_time_meta.approximate,0) AS approximate,calendar_item_meta.calendar_connection_id,calendar_item_meta.all_day,calendar_item_meta.end_day,calendar_item_meta.source_day FROM items LEFT JOIN item_context ON item_context.item_id=items.id LEFT JOIN item_time_meta ON item_time_meta.item_id=items.id LEFT JOIN calendar_item_meta ON calendar_item_meta.item_id=items.id WHERE items.owner=? AND items.id=?").get(owner, id); }
   beginTurn(owner, requestId, text, now) {
     requireThat(typeof requestId === 'string' && requestId.length <= 150, 'INVALID_REQUEST_ID', 'Некорректный идентификатор сообщения.');
     const hash = createHash('sha256').update(text).digest('hex');

@@ -1,6 +1,6 @@
 import {BobError} from './errors.mjs';
 export const control=env=>env.CONTROL.get(env.CONTROL.idFromName('bob-control:v1'));
-export function callUser(env,owner,path,init={}){return env.BOB.get(env.BOB.idFromName(`owner:${owner}:v1`)).fetch('https://internal'+path,{...init,headers:{...init.headers,'x-bob-user':owner}});}
+export function callUser(env,owner,path,init={}){return env.BOB.get(env.BOB.idFromName(`owner:${owner}:v1`)).fetch('https://internal'+path,{...init,redirect:'manual',headers:{...init.headers,'x-bob-user':owner}});}
 export async function callControl(env,path,data={}){const response=await control(env).fetch('https://internal'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw new BobError(result.code??'CONTROL_UNAVAILABLE',result.text??'Сервис временно недоступен.');return result;}
 export class SharedBudget{
  constructor(env,owner){this.env=env;this.owner=owner;}
