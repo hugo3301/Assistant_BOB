@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BobError, requireThat } from './errors.mjs';
-import { resolveDate, verifyDatePhrase, normalize, formatDate, cleanUserText } from './dates.mjs';
+import { resolveDate, verifyDatePhrase, normalize, formatDate, cleanUserText,dayAt } from './dates.mjs';
 import { selectTarget, allowDeadlineChange, isNewRequest, validatePermission } from './policy.mjs';
 import { decodeCalls } from './tools.mjs';
 import { overview } from './views.mjs';
@@ -71,7 +71,13 @@ export class Assistant {
             const explicitClock = /^\s+(в\s+\d{1,2}(?::\d{2})?(?:\s+(?:по\s+москве|мск))?)(?=\s|[,.!?]|$)/u.exec(rest);
             if (explicitClock) phrase = `${phrase} ${explicitClock[1]}`;
           }
-          date = resolveDate(phrase, { now: referenceAt, timezone: user.timezone, requireTime: field === 'when_text', contextText: text, defaultToday: field === 'when_text' });
+          let contextText=text;
+          if(target&&['move_event','change_deadline'].includes(name)){
+            const targetDay=target.at?dayAt(target.at,user.timezone):target.day,part=/вечер|утр|ноч[ьи]|днем|обед/iu.test(phrase);
+            try{const explicit=resolveDate(phrase,{now:referenceAt,timezone:user.timezone,allowPast:true});if(!explicit.at&&target.at&&!part)contextText+='\nПрежнее время выбранного дела: в '+new Intl.DateTimeFormat('en',{timeZone:user.timezone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(target.at));}
+            catch(error){if(error.code==='DATE_MISSING'&&targetDay){try{const probe=resolveDate(phrase,{now:referenceAt,timezone:user.timezone,contextText:targetDay,allowPast:true});if(probe.at||part)contextText+='\nПрежний день выбранного дела: '+targetDay;}catch{}}}
+          }
+          date = resolveDate(phrase, { now: referenceAt, timezone: user.timezone, requireTime: field === 'when_text', contextText, defaultToday: field === 'when_text' });
           requireThat(!date.at || date.at > this.clock(), 'DATE_IN_PAST', 'Это время уже прошло. Укажи новую дату.');
         } catch (error) { error.details = { ...error.details, index, field }; throw error; }
       }
@@ -120,6 +126,7 @@ export class Assistant {
       }
       if (/^\/(?:cancel|отмена)$/i.test(text.trim())) return commit({ status: 'ok', text: 'Уточнение отменено. Дела не изменены.', changed: 0, pending: null });
       let pending = ['date','target','question'].includes(user.pending?.kind)?user.pending:null;
+      if(applicationCalls)pending=null;
       if (pending && (pending.expiresAt <= this.clock() || isNewRequest(text))) pending = null;
       const effectiveText = pending ? `${pending.originalText}\nУточнение: ${text}` : text;
       const referenceAt = pending?.referenceAt ?? this.clock();

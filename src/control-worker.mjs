@@ -10,7 +10,7 @@ export class ControlObject extends DurableObject{
   try{
    if(path==='/access')return Response.json(this.control.access(data.owner,data));
    if(path==='/notice')return Response.json({send:this.control.notice(data.owner)});
-   if(path==='/usage')return Response.json(this.control.usage(data.owner));
+   if(path==='/usage'){const shared=this.control.usage();return Response.json({...this.control.usage(data.owner),sharedRemaining:Math.max(0,shared.limit-shared.spent-shared.reserved),sharedLimit:shared.limit});}
    if(path==='/reserve')return Response.json({id:this.control.reserve(data.owner,data.amount,data)});
    if(path==='/settle'){this.control.settle(data.owner,data.id,data.observed);return Response.json({ok:true});}
    if(path==='/seed'){this.control.seed(data.day,data.spent);return Response.json({ok:true});}

@@ -19,8 +19,8 @@ export class Telegram {
       return payload.result;
     } catch (error) { if (error instanceof BobError) throw error; throw new BobError('TG_NETWORK','Telegram не ответил.'); }
   }
-  send(chat, text, replyMarkup) { return this.call('sendMessage',{chat_id:chat,text,link_preview_options:{is_disabled:true},reply_markup:replyMarkup??{keyboard:[[{text:'Сегодня'},{text:'Неделя'},{text:'Все дела'}],[{text:'Проекты'},{text:'Настройки'},{text:'Помощь'}]],resize_keyboard:true,is_persistent:true}}); }
-  async edit(chat,message,text,replyMarkup){try{return await this.call('editMessageText',{chat_id:chat,message_id:message,text,reply_markup:replyMarkup,link_preview_options:{is_disabled:true}});}catch(error){if(error.unchanged)return;if(error.editUnavailable)return this.send(chat,text,replyMarkup);throw error;}}
+  send(chat, text, replyMarkup,entities=[]) { return this.call('sendMessage',{chat_id:chat,text,entities,link_preview_options:{is_disabled:true},reply_markup:replyMarkup??{keyboard:[[{text:'Сегодня'},{text:'Неделя'},{text:'Все дела'}],[{text:'Проекты'},{text:'Настройки'},{text:'Помощь'}]],resize_keyboard:true,is_persistent:true}}); }
+  async edit(chat,message,text,replyMarkup,entities=[]){try{return await this.call('editMessageText',{chat_id:chat,message_id:message,text,entities,reply_markup:replyMarkup,link_preview_options:{is_disabled:true}});}catch(error){if(error.unchanged)return;if(error.editUnavailable)return this.send(chat,text,replyMarkup,entities);throw error;}}
   answer(id){return this.call('answerCallbackQuery',{callback_query_id:id});}
   typing(chat){return this.call('sendChatAction',{chat_id:chat,action:'typing'});}
   document(chat, file) { const form = new FormData(); form.set('chat_id',String(chat)); form.set('document',new Blob([file.text],{type:'application/json'}),file.name); return this.call('sendDocument',form,true); }

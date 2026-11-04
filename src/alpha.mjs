@@ -4,6 +4,9 @@ import { dayAt, addDays, localToUtc, formatDate, normalize } from './dates.mjs';
 import { calendarPreview, calendarImport } from './calendar.mjs';
 import {prepareCalendarUpload,prepareCalendarChoice,isCalendarAnswer} from './calendar-flow.mjs';
 import {BotUI} from './bot-ui.mjs';
+import {friendlyZone,morningInput,zoneLabel} from './zones.mjs';
+import {reminderFromText} from './assistant.mjs';
+import {nav,UI,minuteLabel} from './ui-kit.mjs';
 import {isNewRequest} from './policy.mjs';
 import {BulkActions} from './bulk-actions.mjs';
 import {quickAction} from './natural.mjs';
@@ -30,9 +33,16 @@ export const HELP = `Я BOB, твой личный помощник. Напиш�
 export class Alpha {
   constructor(store, assistant, { clock = () => new Date().toISOString(),admin=false } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; this.bulk=new BulkActions(store,{clock});this.ui=new BotUI(store,{clock,admin,dispatch:(owner,text,options)=>this.handle(owner,text,{...options,skipUi:true})}); }
   preferences(owner) { return this.store.db.prepare('SELECT * FROM alpha_preferences WHERE owner=?').get(owner); }
-  async handle(owner, text, { requestId=randomUUID(), documentText,caption='',requestText,callback,skipUi=false } = {}) {
+  async handle(owner, text, { requestId=randomUUID(), documentText,caption='',requestText,callback,skipUi=false,returnMarkup } = {}) {
     requireThat(this.assistant.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Нет доступа.');
     this.store.ensureUser(owner);
+    const input=this.store.user(owner).pending;
+    if(!skipUi&&!callback&&documentText===undefined&&input?.kind==='ui_input'&&input.expiresAt>this.clock()&&!isNewRequest(text)&&! /^(?:удали|убери|надо|нужно|сдать|перенеси)\s/iu.test(text)){
+      try{let value=text.trim();if(input.field==='timezone'){value=friendlyZone(value);requireThat(value,'SETTING','Не узнал город. Можно выбрать его кнопкой или написать «UTC+5».');}if(input.field==='morning')value=morningInput(value,this.clock(),this.store.user(owner).timezone);if(input.field==='remind'){value=/^\d+$/u.test(value)?Number(value):reminderFromText('за '+value,null);requireThat(value!==null,'SETTING','Напиши, насколько заранее: например, «за полчаса» или «45 минут».');}
+        return this.handle(owner,`/${input.field==='timezone'?'timezone':input.field} ${value}`,{requestId,requestText:requestText??text,skipUi:true,returnMarkup:{inline_keyboard:[[nav(input.field==='project'?'К проектам':input.field==='diet'?'Мой рацион':'К настройкам',input.field==='project'?'projects':input.field==='diet'?'diet':'settings'),nav(UI.home)]]}});
+      }catch(error){if(!(error instanceof BobError))throw error;return this.ui.handle(owner,`/ui-input ${input.field}`,{requestId,requestText:requestText??text,inputError:error.message});}
+    }
+    if(!skipUi&&!callback&&this.ui.profile(owner)?.onboarding&&!/^\/timezone\s/iu.test(text)){const zone=documentText===undefined?friendlyZone(text):null;if(zone)return this.handle(owner,`/timezone ${zone}`,{requestId,requestText:requestText??text,skipUi:true,returnMarkup:{inline_keyboard:[[nav('Продолжить','home'),nav(UI.settings,'settings')]]}});return this.ui.handle(owner,'/start',{requestId,requestText:requestText??text});}
     if(!skipUi&&documentText===undefined){const result=await this.bulk.handle(owner,text,{requestId,callback,requestText});if(result)return result;}
     if(!skipUi&&documentText===undefined&&(callback||!isCalendarAnswer(this.store,owner,text,this.clock()))){const result=await this.ui.handle(owner,text,{requestId,callback,requestText});if(result)return result;}
     const moving=this.store.user(owner).pending;
@@ -44,7 +54,8 @@ export class Alpha {
     }
     const command = /^\/(\w+)(?:@[\w]+)?(?:\s+([\s\S]*))?$/.exec(text.trim());
     let name = documentText === undefined ? command?.[1]?.toLowerCase() : 'calendar_upload';
-    const argument = command?.[2]?.trim() ?? '';
+    let argument = command?.[2]?.trim() ?? '';
+    if(name==='timezone')argument=friendlyZone(argument)??argument;
     if(!name&&isCalendarAnswer(this.store,owner,text,this.clock()))name='calendar_choice';
     if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)){const quick=quickAction(text,this.store,owner);return this.assistant.handle(owner, quick?.text??text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId,requestText:requestText??text,...(quick?{applicationCalls:quick.calls}:{}) });}
     this.store.ensureUser(owner); const now = this.clock();
@@ -57,23 +68,23 @@ export class Alpha {
       if (name === 'settings') result = `Часовой пояс: ${user.timezone}\nСводка: ${user.morning_time ?? 'выключена'}\nНапоминать за ${user.reminder_minutes} мин.\nПроект новых дел: ${preferences.project ?? 'не выбран'}\nКатегория: ${preferences.area}`;
       if (name === 'morning') {
         requireThat(argument === 'off' || /^([01]\d|2[0-3]):[0-5]\d$/.test(argument), 'SETTING', 'Например: /morning 08:00 или /morning off');
-        mutate = () => { this.store.db.prepare('UPDATE users SET morning_time=? WHERE id=?').run(argument === 'off' ? null : argument, owner); this.store.db.prepare("UPDATE reminders SET status='cancelled' WHERE owner=? AND kind='morning' AND status IN ('pending','claimed')").run(owner); };
-        result = argument === 'off' ? 'Утренняя сводка выключена.' : `Сводка ежедневно в ${argument}, ${user.timezone}.`;
+        mutate = () => { this.store.db.prepare('UPDATE users SET morning_time=? WHERE id=?').run(argument === 'off' ? null : argument, owner); this.store.db.prepare("UPDATE reminders SET status='cancelled' WHERE owner=? AND kind='morning' AND status IN ('pending','claimed')").run(owner);const today=dayAt(now,user.timezone),from=argument==='off'?null:localToUtc(today,argument,user.timezone)>now?today:addDays(today,1);this.store.db.prepare('UPDATE ui_profiles SET morning_from=? WHERE owner=?').run(from,owner); };
+        result = argument === 'off' ? 'Утренняя сводка выключена.' : `Утренняя сводка настроена\n\nКаждый день в ${argument}\n${zoneLabel(user.timezone,now)}`;
       }
       if (name === 'timezone') {
-        try { new Intl.DateTimeFormat('en', { timeZone: argument }).format(); } catch { throw new BobError('SETTING', 'Нужен часовой пояс IANA, например Asia/Tomsk.'); }
-        mutate = () => { this.store.db.prepare('UPDATE users SET timezone=? WHERE id=?').run(argument, owner); this.store.db.prepare("UPDATE reminders SET status='cancelled' WHERE owner=? AND kind='morning' AND status IN ('pending','claimed')").run(owner); };
-        result = `Часовой пояс: ${argument}. Время уже созданных событий в UTC сохранено; существующие серии используют свой исходный часовой пояс.`;
+        try { new Intl.DateTimeFormat('en', { timeZone: argument }).format(); } catch { throw new BobError('SETTING', 'Выбери город в настройках или напиши смещение, например UTC+5.'); }
+        mutate = () => { this.store.db.prepare('UPDATE users SET timezone=? WHERE id=?').run(argument, owner); this.store.db.prepare("UPDATE reminders SET status='cancelled' WHERE owner=? AND kind='morning' AND status IN ('pending','claimed')").run(owner);const today=dayAt(now,argument),from=user.morning_time?(localToUtc(today,user.morning_time,argument)>now?today:addDays(today,1)):null;this.store.db.prepare('UPDATE ui_profiles SET onboarding=0,morning_from=? WHERE owner=?').run(from,owner); };
+        result = `Часовой пояс настроен\n\n${zoneLabel(argument,now)}\nДела и напоминания показываю по твоему времени.`;
       }
       if (name === 'remind') {
         const minutes = Number(argument); requireThat(/^\d+$/.test(argument) && minutes <= 43200, 'SETTING', 'Укажи число минут: /remind 60');
         mutate = () => this.store.db.prepare('UPDATE users SET reminder_minutes=? WHERE id=?').run(minutes, owner);
-        result = `Для новых дел напоминание за ${minutes} мин. Существующие напоминания сохранены.`;
+        result = `Напоминания для новых дел\n\n${minuteLabel(minutes)}`;
       }
       if (name === 'project') {
         requireThat(argument.length > 0 && argument.length <= 80 && !/[\r\n]/u.test(argument), 'PROJECT', 'Укажи название проекта до 80 символов или /project off.');
         mutate = () => { if (argument !== 'off') this.store.db.prepare('INSERT OR IGNORE INTO projects(owner,name) VALUES (?,?)').run(owner, argument); this.store.db.prepare('UPDATE alpha_preferences SET project=? WHERE owner=?').run(argument === 'off' ? null : argument, owner); };
-        result = argument === 'off' ? 'Новые дела вне проекта.' : `Проект «${argument}» выбран. Новые дела будут в нём. /project off — выйти.`;
+        result = argument === 'off' ? 'Новые дела вне проекта.' : `Проект «${argument}» выбран. Новые дела будут в нём.`;
       }
       if (name === 'area') {
         const area = ['Учёба','Проекты','Зал','Питание','Личное'].find(value => normalize(value) === normalize(argument));
@@ -88,6 +99,7 @@ export class Alpha {
       if (name === 'done' || name === 'remove') {
         const item = this.store.item(owner, argument);
         requireThat(item?.status === 'open' && (name !== 'done' || item.kind === 'task'), 'TARGET', 'Укажи id открытого дела из /tasks; /done закрывает только задачи.');
+        extra.focusId=item.id;
         mutate = () => { this.store.changeItem(owner, item.id, {status: name === 'done' ? 'completed' : 'cancelled'}, now); for (const child of this.store.items(owner).filter(child => child.parent_id === item.id)) this.store.changeItem(owner, child.id, {status:'cancelled'}, now); };
         result = `${name === 'done' ? 'Выполнено' : 'Отменено'}: ${item.title}`;
       }
@@ -133,7 +145,7 @@ export class Alpha {
         file = { name: 'bob-export.json', text: JSON.stringify({version:1,exportedAt:now,user:{timezone:user.timezone,morningTime:user.morning_time,reminderMinutes:user.reminder_minutes},preferences,items:this.store.items(owner,{includeClosed:true}),series:this.store.db.prepare('SELECT * FROM weekly_series WHERE owner=?').all(owner),projects:this.store.db.prepare('SELECT name FROM projects WHERE owner=?').all(owner)},null,2) };
         result = 'Экспорт твоих данных BOB. Храни файл у себя; ключей доступа в нём нет.';
       }
-      return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',text:result,changed:['done','remove','repeat'].includes(name)?1:0,modelCalls:0,...(['done','remove'].includes(name)?{pending:null}:{}),...extra,...(file ? {file} : {})},mutate);
+      return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',text:result,changed:['done','remove','repeat'].includes(name)?1:0,modelCalls:0,...(['done','remove','timezone','morning','remind','project','area'].includes(name)?{pending:null}:{}),...extra,...(returnMarkup?{replyMarkup:returnMarkup}:{}),...(file ? {file} : {})},mutate);
     } catch (error) {
       if (!(error instanceof BobError)) throw error;
       return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'error',code:error.code,text:error.message,changed:0,modelCalls:0});

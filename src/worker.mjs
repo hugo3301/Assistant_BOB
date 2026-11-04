@@ -11,6 +11,8 @@ import {friendlyResponse} from './views.mjs';
 import {callUser,callControl,SharedBudget} from './routing.mjs';
 import {dayAt,addDays,localToUtc} from './dates.mjs';
 import {SpeechAI,VoiceFlow} from './voice.mjs';
+import {presentReply,quotaScreen,inviteScreen,membersScreen,statusScreen} from './presentation.mjs';
+import {splitRichMessage} from './ui-kit.mjs';
 export {ControlObject} from './control-worker.mjs';
 const VERSION = '0.2.0-alpha';
 function equalSecret(actual, expected) { if (typeof actual !== 'string' || typeof expected !== 'string' || expected.length < 24) return false; const a = new TextEncoder().encode(actual), b = new TextEncoder().encode(expected); return a.length === b.length && timingSafeEqual(a,b); }
@@ -18,7 +20,7 @@ function object(env) {return{fetch:(url,init)=>callUser(env,String(env.TELEGRAM_
 export default {
   async fetch(request,env,ctx) {
     const path = new URL(request.url).pathname;
-    if (path === '/health' && request.method === 'GET') return Response.json({service:'BOB',version:VERSION,status:'ok'},{headers:{'Cache-Control':'no-store'}});
+    if (path === '/health' && request.method === 'GET') return Response.json({service:'BOB',version:VERSION,status:'ok',features:{voice:true,invitedUsers:10,ui:2}},{headers:{'Cache-Control':'no-store'}});
     if (path === '/admin/status' && request.method === 'GET' && equalSecret(request.headers.get('Authorization'), `Bearer ${env.ADMIN_SECRET}`)) return object(env).fetch('https://internal/status');
     if(path==='/admin/telegram'&&request.method==='POST'&&equalSecret(request.headers.get('Authorization'),`Bearer ${env.ADMIN_SECRET}`))return object(env).fetch(new Request('https://internal/configure',{method:'POST'}));
     if(path==='/admin/registry'&&request.method==='GET'&&equalSecret(request.headers.get('Authorization'),`Bearer ${env.ADMIN_SECRET}`))return Response.json(await callControl(env,'/overview',{owner:String(env.TELEGRAM_OWNER_ID)}));
@@ -53,7 +55,8 @@ export class BobObject extends DurableObject {
     const users=this.store.db.prepare('SELECT id FROM users').all();requireThat(users.length<=1,'TENANT_STATE','Хранилище не изолировано.');if(users[0])this.initialize(users[0].id);
   }
   initialize(owner){requireThat(/^[1-9]\d{0,19}$/u.test(owner??'')&&this.ctx.id.toString()===this.env.BOB.idFromName(`owner:${owner}:v1`).toString()&&(!this.owner||this.owner===owner),'TENANT_OWNER','Нет доступа к этому хранилищу.');if(this.owner)return;this.owner=owner;
-    this.store.ensureUser(owner,{timezone:'Asia/Tomsk',morningTime:'08:00',reminderMinutes:60});
+    const fresh=!this.store.user(owner);this.store.ensureUser(owner,{timezone:'Asia/Tomsk',morningTime:'08:00',reminderMinutes:60});
+    if(fresh&&owner!==String(this.env.TELEGRAM_OWNER_ID))this.store.db.prepare('UPDATE ui_profiles SET onboarding=1,morning_from=? WHERE owner=?').run(addDays(dayAt(new Date().toISOString(),'Asia/Tomsk'),1),owner);
     const now=new Date().toISOString();if(owner===String(this.env.TELEGRAM_OWNER_ID)&&this.env.AI_BUDGET_SEED_DAY===now.slice(0,10))this.store.db.prepare('INSERT OR IGNORE INTO budget(day,spent,reserved) VALUES (?,?,0)').run(now.slice(0,10),Number(this.env.AI_BUDGET_SEED_NEURONS)||0);
     this.budget=new SharedBudget(this.env,owner);this.assistant=new Assistant(this.store,{provider:new WorkersAI(this.store,{accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget}),allowedOwners:[owner]});this.alpha=new Alpha(this.store,this.assistant,{admin:owner===String(this.env.TELEGRAM_OWNER_ID)});this.voice=new VoiceFlow(this.store,owner,{telegram:this.telegram,speech:new SpeechAI({accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget})});this.reminders=new ReminderWorker(this.store);this.paused=this.store.db.prepare("SELECT value FROM runtime_health WHERE key='paused'").get()?.value==='1';
   }
@@ -72,8 +75,11 @@ export class BobObject extends DurableObject {
     }
     if(path==='/pause'&&request.method==='POST'){this.paused=true;this.store.db.prepare("INSERT OR REPLACE INTO runtime_health VALUES ('paused','1')").run();await this.ctx.storage.deleteAlarm();return Response.json({paused:true});}
     if(path==='/configure'&&request.method==='POST'){
+      const me=await this.telegram.call('getMe',{});requireThat(me.username==='mybob_robot','BOT_CONFIG','Неверный бот: настройка отменена.');
       await this.telegram.call('setWebhook',{url:'https://assistant-bob-alpha.assistant-bob.workers.dev/telegram/webhook',secret_token:this.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message','callback_query'],max_connections:1,drop_pending_updates:false});
-      return Response.json({callbackUpdatesEnabled:true});
+      const commands=[['today','Сегодня и ближайшие дела'],['week','План на неделю'],['ahead','Все сроки и дела без даты'],['projects','Проекты и категории'],['settings','Время, сводка и напоминания'],['help','Как пользоваться BOB'],['status','Проверить состояние'],['cancel','Отменить текущий ввод']].map(([command,description])=>({command,description}));
+      for(const language_code of ['','ru']){await this.telegram.call('setMyCommands',{commands,scope:{type:'all_private_chats'},language_code});await this.telegram.call('setMyCommands',{commands:[...commands,{command:'invite',description:'Пригласить друга в альфу'},{command:'members',description:'Участники альфы'}],scope:{type:'chat',chat_id:Number(this.env.TELEGRAM_OWNER_ID)},language_code});await this.telegram.call('setMyDescription',{description:'BOB помогает держать дела под контролем: задачи, встречи, расписание .ics, утренняя сводка и напоминания. Пиши обычными словами или присылай голосовые до 2 минут. Личная альфа по приглашениям, до 10 участников. Обработка текста и голоса — Cloudflare AI.',language_code});await this.telegram.call('setMyShortDescription',{short_description:'Дела, голос, расписание и напоминания. Личная альфа по приглашению.',language_code});}
+      return Response.json({callbackUpdatesEnabled:true,profileUpdated:true,privateMenuCommands:commands.length});
     }
     if (path === '/wake') {
       if(this.paused)return new Response('ok');
@@ -86,18 +92,20 @@ export class BobObject extends DurableObject {
   async sendReminder(message) {
     if(this.paused)return;
     if (message.owner !== this.owner) throw new Error('Owner mismatch');
-    const chunks = splitMessage(message.text); for (const chunk of chunks) await this.telegram.send(this.owner,chunk);
+    const response=presentReply({text:message.text},this.store,this.owner);for(const chunk of splitRichMessage(response.text,response.entities))await this.telegram.send(this.owner,chunk.text,response.replyMarkup,chunk.entities);
   }
   async serviceMessage(text,callback,requestId){
-    const command=callback?.data?.startsWith('a|')?callback.data.slice(2):/^\/(invite|members|quota|status)(?:\s+.*)?$/u.exec(text)?.[1]??({'Пригласить друга':'invite','Ресурс ИИ':'quota'}[text]);
+    const clean=String(text).toLowerCase().replaceAll('ё','е').replace(/[.!?]+$/u,'').trim();
+    const command=callback?.data?.startsWith('a|')?callback.data.slice(2):/^\/(invite|members|quota|status)(?:\s+.*)?$/u.exec(clean)?.[1]??(/^(?:пригласи(?:ть)? друга|приглашение)$/u.test(clean)?'invite':/^(?:участники|список участников|кто пользуется ботом)$/u.test(clean)?'members':/^(?:ресурс ии|лимит(?:ы)?(?: ии)?|сколько осталось(?: токенов)?|что с лимитом)$/u.test(clean)?'quota':/^(?:статус|ты работаешь|ты на связи)$/u.test(clean)?'status':null);
     if(!command)return null;
     const cached=this.store.db.prepare('SELECT response FROM service_receipts WHERE id=?').get(requestId);if(cached)return JSON.parse(cached.response);
     let response;const admin=this.owner===String(this.env.TELEGRAM_OWNER_ID);
     try{
       if(command==='home')return this.alpha.handle(this.owner,'/start',{requestId,requestText:callback?`callback:${callback.id}:${callback.data}`:text});
-      if(command==='invite'){requireThat(admin,'ADMIN_ONLY','Приглашать друзей может владелец бота.');const invite=await callControl(this.env,'/invite',{owner:this.owner,requestId});response={text:`Приглашение для друга\n\nОтправь эту личную ссылку одному человеку. Она действует 7 дней и открывается только один раз.\n\n${invite.url}`,replyMarkup:{inline_keyboard:[[{text:'Участники',callback_data:'a|members'},{text:'В меню',callback_data:'a|home'}]]}};}
-      else if(command==='members'){requireThat(admin,'ADMIN_ONLY','Список участников доступен владельцу.');const group=await callControl(this.env,'/overview',{owner:this.owner});response={text:`Участники альфы · ${group.members.filter(member=>member.active).length} из ${group.capacity}\n\n`+group.members.filter(member=>member.active).map(member=>`• ${member.label}`).join('\n')+'\n\nУ каждого отдельные дела и настройки.',replyMarkup:{inline_keyboard:[[{text:'Пригласить друга',callback_data:'a|invite'},{text:'В меню',callback_data:'a|home'}]]}};}
-      else if(command==='quota'||command==='status'){const usage=await this.budget.usage(),percent=Math.max(0,Math.floor((usage.limit-usage.spent-usage.reserved)/usage.limit*100));response={text:`Ресурс ИИ на сегодня\n\nОсталось ${percent}% личного лимита.\n\nОн нужен для сложных фраз и распознавания голоса. Меню, простые текстовые действия и сохранённые напоминания работают без ИИ.\nЛимит обновляется раз в сутки.`,replyMarkup:{inline_keyboard:[[{text:'В меню',callback_data:'a|home'}]]}};}
+      if(command==='invite'){requireThat(admin,'ADMIN_ONLY','Приглашать друзей может владелец бота.');response=inviteScreen(await callControl(this.env,'/invite',{owner:this.owner,requestId}));}
+      else if(command==='members'){requireThat(admin,'ADMIN_ONLY','Список участников доступен владельцу.');response=membersScreen(await callControl(this.env,'/overview',{owner:this.owner}));}
+      else if(command==='quota')response=quotaScreen(await this.budget.usage(),this.store.user(this.owner),new Date().toISOString());
+      else if(command==='status')response=statusScreen(this.store.user(this.owner),{failedReminders:this.store.db.prepare("SELECT COUNT(*) AS count FROM reminders WHERE owner=? AND status='failed'").get(this.owner).count,failedReplies:this.store.db.prepare("SELECT COUNT(*) AS count FROM telegram_outbox WHERE status='failed'").get().count});
       else response={text:'Эта кнопка устарела. Открой /start.'};
     }catch(error){if(!(error instanceof BobError))throw error;response={status:'error',code:error.code,text:error.message};}
     response={status:'ok',changed:0,modelCalls:0,...response};this.store.db.prepare('INSERT OR IGNORE INTO service_receipts VALUES (?,?)').run(requestId,JSON.stringify(response));return response;
@@ -117,7 +125,7 @@ export class BobObject extends DurableObject {
       const service=await this.serviceMessage(message.text??'',callback,`tg:${job.id}`);
       if(service)response=service;
       else if(callback){response=await this.alpha.handle(this.owner,'',{requestId:`tg:${job.id}`,callback});}
-      else if(message.voice)response=await this.voice.handle(message.voice,`tg:${job.id}`,text=>this.alpha.handle(this.owner,text,{requestId:`tg:${job.id}`}));
+      else if(message.voice)response=await this.voice.handle(message.voice,`tg:${job.id}`,async text=>(await this.serviceMessage(text,null,`tg:${job.id}`))??this.alpha.handle(this.owner,text,{requestId:`tg:${job.id}`}));
       else if (message.document) {
         if ((!/\.ics$/i.test(message.document.file_name ?? '')&&!['text/calendar','application/ics','application/icalendar'].includes(message.document.mime_type)) || message.document.file_size > 1000000) response = {text:'Пришли расписание файлом .ics до 1 МБ. Другие вложения в альфе пока не обрабатываю.'};
         else {
@@ -126,12 +134,12 @@ export class BobObject extends DurableObject {
         }
       } else if (typeof message.text === 'string' && message.text.length <= 8000) response = await this.alpha.handle(this.owner,message.text,{requestId:`tg:${job.id}`});
       else response = {text:'Пришли текст, голосовое до 2 минут или расписание .ics. Открыть меню: /start.'};
-      response=friendlyResponse(response);
-      const chunks=splitMessage(response.text),payloads = chunks.map((text,index) => ({text,...(index===chunks.length-1&&response.replyMarkup?{replyMarkup:response.replyMarkup}:{}),...(callback&&response.edit&&chunks.length===1?{editMessageId:message.message_id}:{})})); if (response.file) payloads.push({file:response.file});
+      response=presentReply(response,this.store,this.owner);
+      const chunks=splitRichMessage(response.text,response.entities),payloads = chunks.map((chunk,index) => ({...chunk,...(index===chunks.length-1&&response.replyMarkup?{replyMarkup:response.replyMarkup}:{}),...(callback&&response.edit&&chunks.length===1?{editMessageId:message.message_id}:{})})); if (response.file) payloads.push({file:response.file});
       this.store.transaction(() => {
         for (const [index,payload] of payloads.entries()) this.store.db.prepare('INSERT OR IGNORE INTO telegram_outbox(id,payload,next_at) VALUES (?,?,?)').run(`reply:${job.id}:${index}`,JSON.stringify(payload),new Date().toISOString());
         this.store.db.prepare("UPDATE telegram_jobs SET status='done',payload='{}',lease_until=NULL,last_error=NULL WHERE id=?").run(job.id);
-        this.store.db.prepare('UPDATE job_metrics SET finished_at=?,model_calls=?,outcome=? WHERE id=?').run(new Date().toISOString(),response.modelCalls??0,response.code??response.status??'ok',job.id);
+        this.store.db.prepare('UPDATE job_metrics SET finished_at=?,model_calls=?,outcome=? WHERE id=?').run(new Date().toISOString(),(response.modelCalls??0)+(response.voice?1:0),response.code??response.status??'ok',job.id);
       });
       this.health('last_job');
     } catch (error) {
@@ -139,7 +147,7 @@ export class BobObject extends DurableObject {
       if (known || job.attempts >= 3) {
         this.store.transaction(() => {
           const text = known ? error.message : 'Не удалось завершить обработку. Проверь /tasks, прежде чем повторять действие. Данные могли сохраниться перед сбоем.';
-          this.store.db.prepare('INSERT OR IGNORE INTO telegram_outbox(id,payload,next_at) VALUES (?,?,?)').run(`error:${job.id}`,JSON.stringify({text}),new Date().toISOString());
+          const view=presentReply({status:'error',code:known?error.code:'JOB_FAILED',text},this.store,this.owner),chunk=splitRichMessage(view.text,view.entities)[0];this.store.db.prepare('INSERT OR IGNORE INTO telegram_outbox(id,payload,next_at) VALUES (?,?,?)').run(`error:${job.id}`,JSON.stringify({...chunk,replyMarkup:view.replyMarkup}),new Date().toISOString());
           this.store.db.prepare("UPDATE telegram_jobs SET status='failed',payload='{}',last_error=? WHERE id=?").run(known ? error.code : 'JOB_FAILED',job.id);
         });
       } else this.store.db.prepare("UPDATE telegram_jobs SET status='pending',next_at=?,lease_until=NULL,last_error='JOB_RETRY' WHERE id=?").run(new Date(Date.now()+185000).toISOString(),job.id);
@@ -154,7 +162,7 @@ export class BobObject extends DurableObject {
       if(row.next_at>new Date().toISOString())break;
       try {
         const payload = JSON.parse(row.payload);
-        if (payload.file) await this.telegram.document(this.owner,payload.file); else if(payload.editMessageId)await this.telegram.edit(this.owner,payload.editMessageId,payload.text,payload.replyMarkup);else await this.telegram.send(this.owner,payload.text,payload.replyMarkup);
+        if (payload.file) await this.telegram.document(this.owner,payload.file); else if(payload.editMessageId)await this.telegram.edit(this.owner,payload.editMessageId,payload.text,payload.replyMarkup,payload.entities);else await this.telegram.send(this.owner,payload.text,payload.replyMarkup,payload.entities);
         this.store.db.prepare("UPDATE telegram_outbox SET status='sent',payload='{}',sent_at=?,attempts=attempts+1,last_error=NULL WHERE id=?").run(new Date().toISOString(),row.id);
         const job=/^reply:(\d+):/u.exec(row.id);if(job)this.store.db.prepare('UPDATE job_metrics SET reply_sent_at=COALESCE(reply_sent_at,?) WHERE id=?').run(new Date().toISOString(),Number(job[1]));
       } catch (error) {

@@ -7,6 +7,7 @@ export class ReminderWorker {
   queueMornings(now) {
     for (const user of this.store.db.prepare('SELECT * FROM users WHERE morning_time IS NOT NULL').all()) {
       const day = dayAt(now, user.timezone);
+      const from=this.store.db.prepare('SELECT morning_from FROM ui_profiles WHERE owner=?').get(user.id)?.morning_from;if(from&&day<from)continue;
       let fire;
       try { fire = localToUtc(day, user.morning_time, user.timezone); } catch { continue; }
       if (fire > now || Date.parse(now) - Date.parse(fire) > 8 * 3600000) continue;

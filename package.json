@@ -12,7 +12,8 @@
     "demo": "node scripts/demo.mjs",
     "build:cloud": "node scripts/build-cloud.mjs",
     "test:cloud": "node scripts/build-cloud.mjs && node scripts/check-cloud-local.mjs",
-    "deploy": "node --env-file=.env scripts/deploy.mjs"
+    "deploy": "node --env-file=.env scripts/deploy.mjs",
+    "design:catalog": "node scripts/render-design-catalog.mjs docs/design-catalog.html"
   },
   "dependencies": {
     "ical.js": "2.2.1"

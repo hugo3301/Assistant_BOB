@@ -1,0 +1,153 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BOB — система диалога</title><style>
+ :root{color-scheme:dark;--page:#0b1119;--surface:#111d2a;--bubble:#192b3b;--button:#20394d;--text:#edf4fa;--muted:#90a5b7;--accent:#8bcfff;--line:#263a4a}*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--text);font:15px/1.5 "Segoe UI",Arial,sans-serif}main{max-width:1180px;padding:52px 32px 72px;margin:auto}.eyebrow{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent)}header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:32px}h1{font-size:44px;line-height:1.12;letter-spacing:-.045em;margin:12px 0}header p{max-width:720px;color:var(--muted);font-size:16px;margin:16px 0 0}.facts{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}.facts span{border:1px solid var(--line);border-radius:20px;padding:6px 12px;font-size:12px;color:#bdd5e6}nav{display:flex;gap:20px;margin-top:24px}a{color:var(--accent);text-decoration:none;font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:38px 28px}.state-heading{display:flex;gap:12px;height:84px;align-items:flex-start}.state-heading>span{color:#55778f;font-size:12px;padding-top:5px}.state h2{font-size:17px;margin:0 0 4px;font-weight:600}.state p{font-size:12px;color:var(--muted);margin:0}.phone{height:690px;background:#0d1822;border:1px solid #304756;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px #0003;display:flex;flex-direction:column}.chat-head{height:64px;min-height:64px;background:#152331;display:flex;align-items:center;gap:10px;padding:10px 14px}.back{font-size:30px;color:#a9bdcd}.avatar{height:37px;width:37px;border-radius:50%;background:#3b85b4;display:grid;place-items:center;font-size:21px;font-weight:600}.chat-head b{font-size:14px}.chat-head small{display:block;color:var(--muted);font-size:11px}.dots{margin-left:auto;font-size:24px;color:var(--muted)}.chat-body{padding:13px 10px;overflow:auto;flex:1;scrollbar-width:thin;scrollbar-color:#34516a transparent}.date-chip{font-size:10px;background:#233647;color:#a9bfce;text-align:center;display:table;margin:0 auto 12px;padding:2px 9px;border-radius:20px}.message{background:var(--bubble);border-radius:14px 14px 14px 4px;padding:12px 13px 5px}.message-text{font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}.message-text strong{font-weight:650}.message-text em{color:#b5c7d5;font-style:normal}.message-text code{font:12px/1.4 Consolas,monospace;color:#a7d7f7}.time{display:block;text-align:right;color:#718fa5;font-size:10px;margin-top:5px}.keyboard{margin-top:5px}.button-row{display:grid;gap:5px;margin-top:5px}.chat-button{background:var(--button);color:#b3dfff;border-radius:8px;padding:10px 5px;text-align:center;font-size:11px;font-weight:600;min-height:37px;line-height:1.35;overflow-wrap:anywhere}.composer{min-height:47px;background:#152331;display:flex;align-items:center;padding:10px 14px;gap:13px;color:#788e9e;font-size:12px}.composer span:first-child{font-size:22px}.composer span:last-child{margin-left:auto;font-size:18px}footer{border-top:1px solid var(--line);margin-top:44px;padding-top:20px;color:var(--muted);font-size:12px;max-width:850px}@media(max-width:950px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){main{padding:28px 20px}h1{font-size:34px}.grid{grid-template-columns:1fr}.phone{max-width:370px}.state-heading{height:66px}nav{gap:12px;flex-wrap:wrap}}
+ </style></head><body><main><header><div class="eyebrow">BOB / система диалога / alpha</div><h1>Меньше шума.<br>Понятно, что дальше.</h1><p>Единый ритм сообщений, короткая навигация и явные действия. Каталог собран из тех же функций, которые формируют ответы бота.</p><div class="facts"><span>Текст и голос</span><span>Личные данные</span><span>10 участников по приглашению</span><span>Обычный Telegram</span></div><nav><a href="#home">Главные экраны</a><a href="#voice">Голос и первый вход</a><a href="#confirm">Подтверждения и ресурс</a><a href="#help">Помощь и ввод</a></nav></header><section class="grid"><article id="home" class="state"><div class="state-heading"><span>01</span><div><h2>Главная</h2><p>Основные действия и ближайшее дело</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>BOB · всё важное под рукой</strong>
+<em>Томск · UTC+7</em>
+
+На сегодня 3 дела
+Ближайшее · 10:30 · Базы данных
+
+Новые дела → проект «Диплом»</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">📅 Сегодня</span><span class="chat-button">📆 Неделя</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Все дела</span><span class="chat-button">Проекты</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">＋ Добавить дело</span><span class="chat-button">Расписание .ics</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Настройки</span><span class="chat-button">Помощь</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Пригласить друга</span><span class="chat-button">Участники</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="week" class="state"><div class="state-heading"><span>02</span><div><h2>Неделя</h2><p>Названия читаются первыми, время — рядом</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>📆 Ближайшие 7 дней</strong>
+<em>Томск · UTC+7</em>
+
+<strong>Сегодня · ср, 4 ноября</strong>
+
+<strong>1. Отправить заявку на конференцию</strong>
+Срок
+
+<strong>2. Базы данных</strong>
+10:30–12:00 · ЛБ
+
+<strong>3. Созвон по проекту</strong>
+16:00–16:30
+↳ Диплом
+
+<strong>Завтра · чт, 5 ноября</strong>
+
+<strong>4. Встреча с куратором</strong>
+19:00–20:00
+↳ Диплом
+
+<strong>пт, 6 ноября</strong>
+
+<strong>5. Зал</strong>
+18:00–19:00</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">1 · Отправить заявку …</span><span class="chat-button">2 · Базы данных</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">3 · Созвон по проекту</span><span class="chat-button">4 · Встреча с куратор…</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">5 · Зал</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">↻ Обновить</span><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="card" class="state"><div class="state-heading"><span>03</span><div><h2>Карточка</h2><p>Один объект, понятные действия</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>📅 Событие</strong>
+<strong>Встреча с куратором</strong>
+
+<strong>Завтра · чт, 5 ноября</strong>
+19:00–20:00
+Томск · UTC+7
+
+Проект · Диплом
+
+Напоминание · за 1 час</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Перенести</span><span class="chat-button">Убрать</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">‹ К списку</span><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="all" class="state"><div class="state-heading"><span>04</span><div><h2>Общая картина</h2><p>Сроки впереди расписания, дела без даты видны</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>🔭 Общая картина</strong>
+<em>Томск · UTC+7</em>
+
+Всего 7 · задач 3 · без срока 1
+Сначала задачи и сроки, затем события.
+
+<strong>Сегодня · ср, 4 ноября</strong>
+
+<strong>1. Отправить заявку на конференцию</strong>
+Срок
+
+<strong>чт, 12 ноября</strong>
+
+<strong>2. Сдать отчёт по практике</strong>
+Срок
+↳ Диплом
+
+<strong>Без срока</strong>
+
+<strong>3. Разобрать материалы для диплома</strong>
+Задача
+↳ Диплом
+
+<strong>Сегодня · ср, 4 ноября</strong>
+
+<strong>4. Базы данных</strong>
+10:30–12:00 · ЛБ
+
+<strong>5. Созвон по проекту</strong>
+16:00–16:30
+↳ Диплом
+
+<strong>Завтра · чт, 5 ноября</strong>
+
+<strong>6. Встреча с куратором</strong>
+19:00–20:00
+↳ Диплом
+
+Страница 1 из 2 · всего 7</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">1 · Отправить заявку …</span><span class="chat-button">2 · Сдать отчёт по пр…</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">3 · Разобрать материа…</span><span class="chat-button">4 · Базы данных</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">5 · Созвон по проекту</span><span class="chat-button">6 · Встреча с куратор…</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">Дальше ›</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">↻ Обновить</span><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="projects" class="state"><div class="state-heading"><span>05</span><div><h2>Проекты</h2><p>Контекст новых дел виден явно</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>📂 Проекты</strong>
+
+Диплом · 4 открытых дела
+
+<em>Новые дела сейчас → «Диплом»</em></div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">Диплом</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">＋ Новый проект</span><span class="chat-button">Категории</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">Добавлять без проекта</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="settings" class="state"><div class="state-heading"><span>06</span><div><h2>Настройки</h2><p>Понятные значения и отдельные разделы</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>⚙ Настройки</strong>
+
+<strong>Время</strong>
+Томск · UTC+7
+
+<strong>Утренняя сводка</strong>
+Каждый день в 08:00
+
+<strong>Напоминания для новых дел</strong>
+за 1 час</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Часовой пояс</span><span class="chat-button">Утренняя сводка</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Напоминания</span><span class="chat-button">Ресурс ИИ</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="voice" class="state"><div class="state-heading"><span>07</span><div><h2>Ответ на голос</h2><p>Сначала услышанное, затем сохранённый результат</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>🎙 Услышал</strong>
+
+Завтра в шесть вечера встреча с командой
+
+<strong>✅ Добавлено</strong>
+
+<strong>встреча с командой</strong>
+Завтра · чт, 5 ноября
+18:00
+Напоминание · за 1 час
+Проект · Диплом</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">↩ Вернуть как было</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="onboarding" class="state"><div class="state-heading"><span>08</span><div><h2>Первый вход</h2><p>Часовой пояс выбирается до первого дела</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>Привет! Давай настроим время</strong>
+
+Выбери свой город. Так «завтра» и напоминания будут по твоему времени.
+
+<em>Если города нет в списке, выбери «Другая зона».</em></div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Томск</span><span class="chat-button">Москва</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Екатеринбург</span><span class="chat-button">Новосибирск</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Иркутск</span><span class="chat-button">Владивосток</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">Другая зона</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="empty" class="state"><div class="state-heading"><span>09</span><div><h2>Пустое состояние</h2><p>Есть следующий шаг, даже если дел пока нет</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>📅 Сегодня</strong>
+<em>Томск · UTC+7</em>
+
+На сегодня дел нет.</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">＋ Добавить дело</span><span class="chat-button">Расписание .ics</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">↻ Обновить</span><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="confirm" class="state"><div class="state-heading"><span>10</span><div><h2>Массовое действие</h2><p>Область, количество и понятный отказ</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>Убрать дела?</strong>
+
+Дел: 8
+Их напоминания тоже отключатся.
+Вернуть изменение можно в течение 10 минут.</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Убрать 8 дел</span><span class="chat-button">Оставить</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="quota" class="state"><div class="state-heading"><span>11</span><div><h2>Ресурс ИИ</h2><p>Личная и общая доступность, точное обновление</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>⚡ Ресурс ИИ</strong>
+
+<strong>Личный · осталось 68%</strong>
+Общий ресурс альфы · 77%
+
+Ресурс нужен для сложных фраз и распознавания голоса. Меню, быстрые текстовые действия и напоминания работают без модели.
+
+<strong>Обновится</strong>
+Завтра · чт, 5 ноября, 07:00
+Томск · UTC+7</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Настройки</span><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="invite" class="state"><div class="state-heading"><span>12</span><div><h2>Приглашение</h2><p>Ссылка для одного нового участника</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>Приглашение для друга</strong>
+
+Отправь личную ссылку одному новому участнику:
+
+https://t.me/mybob_robot?start=join_example
+
+<em>Действует 7 дней. У каждого свои дела, история и настройки.</em></div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">Поделиться приглашением</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Участники</span><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="members" class="state"><div class="state-heading"><span>13</span><div><h2>Участники</h2><p>Роль владельца отделена от личных дел</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>Участники альфы</strong>
+<em>2 из 10 мест</em>
+
+• Владелец
+• Друг из группы
+
+Приглашений ожидают · 1
+Свободно · 7
+
+<em>У каждого отдельные дела и настройки.</em></div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Пригласить друга</span><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="help" class="state"><div class="state-heading"><span>14</span><div><h2>Помощь</h2><p>Короткие примеры вместо стены команд</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>💬 Как пользоваться BOB</strong>
+
+<strong>Говори как обычно</strong>
+«Что у меня завтра?»
+«Сдал отчёт»
+«Перенеси её на пятницу»
+
+<strong>Голос и расписание</strong>
+Голосовые до 2 минут и файлы .ics можно присылать прямо сюда.
+
+<strong>Если ошибся</strong>
+Нажми «Вернуть как было» или напиши «отмени последнее изменение» в течение 10 минут. Массовое удаление сначала уточню.
+
+<em>Другие участники не видят твои дела. Текст и голос для обработки передаются Cloudflare AI.</em></div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">＋ Добавить дело</span><span class="chat-button">Расписание .ics</span></div><div class="button-row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span class="chat-button">Ресурс ИИ</span><span class="chat-button">Ещё возможности</span></div><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">В меню</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article><article id="input" class="state"><div class="state-heading"><span>15</span><div><h2>Ввод без формата</h2><p>Время можно ответить обычными словами</p></div></div><div class="phone"><div class="chat-head"><span class="back">‹</span><div class="avatar">B</div><div><b>BOB</b><small>бот</small></div><span class="dots">⋮</span></div><div class="chat-body"><div class="date-chip">4 ноября</div><div class="message"><div class="message-text"><strong>Во сколько присылать сводку?</strong>
+
+Например: «в семь утра» или «07:30».</div><small class="time">09:00</small></div><div class="keyboard"><div class="button-row" style="grid-template-columns:repeat(1,minmax(0,1fr))"><span class="chat-button">Отмена</span></div></div></div><div class="composer"><span>⌕</span><span>Сообщение</span><span>🎙</span></div></div></article></section><footer>Все данные вымышлены. Это каталог состояний, кнопки здесь не отправляют команды. В Telegram цвет, шрифт и фон выбирает приложение пользователя; бот задаёт структуру, выделение текста и подписи кнопок. Макет показывает тёмную тему для сравнения экранов.</footer></main></body></html>

@@ -28,7 +28,7 @@ function selection(text,groups,previous=[]) {
   }
   return null;
 }
-function summary(result) { return result.added+result.updated+result.skipped+result.cancelled?`Расписание расставлено на ближайшие 90 дней: добавлено ${result.added}, обновлено ${result.updated}, уже было ${result.skipped}, отменено ${result.cancelled}. Напоминания настроены по твоим настройкам. /week — ближайшие занятия.`:'В выбранных группах нет будущих занятий на ближайшие 90 дней. Ничего не добавлено; проверь период экспорта.'; }
+function summary(result) { return result.added+result.updated+result.skipped+result.cancelled?`📅 Расписание расставлено\nБлижайшие 90 дней\n\n${[result.added?`Добавлено · ${result.added}`:'',result.updated?`Обновлено · ${result.updated}`:'',result.skipped?`Уже было · ${result.skipped}`:'',result.cancelled?`Отменено · ${result.cancelled}`:''].filter(Boolean).join('\n')}\n\nНапоминания настроены. Открой «Неделю», чтобы проверить занятия.`:'В выбранных группах нет будущих занятий на ближайшие 90 дней. Ничего не добавлено; проверь период экспорта.'; }
 function showGroups(preview,selected=[]) {
   const rows=preview.groups.slice(0,30).map((group,index)=>`${selected.includes(index+1)?'✓ ':''}${index+1}. ${group.title}\n${[group.description.slice(0,240),group.location].filter(Boolean).join(' · ')}`);
   return `${rows.join('\n\n')}${preview.groups.length>30?`\nЕщё ${preview.groups.length-30} групп. Можешь выбрать по названию или подгруппе обычным текстом.`:''}`;
@@ -66,7 +66,7 @@ export function prepareCalendarUpload(store,owner,body,caption,now) {
       } else persistChoice(store,owner,body,preview,selected,now);
     }};
   }
-  return {text:`Прочитал .ics: ${preview.groups.length} групп занятий. Ничего не импортировано. Один раз уточни свои пары, чтобы не добавить чужие: напиши «все мои», «только 1 и 3» или «моя подгруппа 2». После выбора я сам расставлю даты, повторы и напоминания.\n\n${showGroups(preview)}`,pending:null,mutate:()=>store.db.prepare('INSERT INTO calendar_previews VALUES (?,?,NULL,?) ON CONFLICT(owner) DO UPDATE SET body=excluded.body,selected=NULL,created_at=excluded.created_at').run(owner,body,now)};
+  return {text:`📅 Выберем твои пары\n\nНашёл ${preview.groups.length} групп занятий. Ничего не импортировано.\n\nНапиши «все мои», «только 1 и 3» или «моя подгруппа 2». Выбор запомню, затем сам расставлю даты, повторы и напоминания.\n\n${showGroups(preview)}`,pending:null,mutate:()=>store.db.prepare('INSERT INTO calendar_previews VALUES (?,?,NULL,?) ON CONFLICT(owner) DO UPDATE SET body=excluded.body,selected=NULL,created_at=excluded.created_at').run(owner,body,now)};
 }
 export function isCalendarAnswer(store,owner,text,now) {
   const staged=store.db.prepare('SELECT * FROM calendar_previews WHERE owner=?').get(owner);

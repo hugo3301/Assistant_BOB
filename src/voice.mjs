@@ -43,7 +43,7 @@ export class VoiceFlow{
   requireThat((voice.file_size??0)<=FREE_POLICY.voiceBytes,'VOICE_SIZE','Запись слишком большая. Пришли голосовое до 2 минут и 2 МБ.');
   const row=this.store.db.prepare('SELECT result FROM voice_receipts WHERE owner=? AND request_id=?').get(this.owner,requestId);let result=row?JSON.parse(row.result):null;
   if(!result){const bytes=await this.telegram.voice(voice.file_id),seconds=opusDuration(bytes);requireThat(Math.abs(seconds-voice.duration)<=2,'VOICE_FORMAT','Не удалось проверить длительность записи. Запиши голосовое ещё раз.');result=await this.speech.transcribe(bytes,seconds);this.store.db.prepare('INSERT INTO voice_receipts VALUES (?,?,?,?)').run(this.owner,requestId,JSON.stringify(result),this.clock());this.store.db.prepare('DELETE FROM voice_receipts WHERE owner=? AND created_at<?').run(this.owner,new Date(Date.parse(this.clock())-7*86400000).toISOString());}
-  if(result.uncertain)return{status:'clarify',changed:0,modelCalls:0,text:result.text?`Расслышал неуверенно\n\n«${result.text}»\n\nЗапиши ещё раз или напиши текстом. Пока ничего не менял.`:'Не расслышал голос\n\nПопробуй говорить ближе к микрофону или напиши текстом. Дела не изменены.'};
-  const response=await dispatch(result.text);return{...response,text:`🎙 Услышал\n«${result.text}»\n\n${response.text}`,voice:true};
+  if(result.uncertain)return{status:'clarify',changed:0,modelCalls:0,voice:true,text:result.text?`Расслышал неуверенно\n\n«${result.text}»\n\nЗапиши ещё раз или напиши текстом. Пока ничего не менял.`:'Не расслышал голос\n\nПопробуй говорить ближе к микрофону или напиши текстом. Дела не изменены.'};
+  const response=await dispatch(result.text);return{...response,text:`🎙 Услышал\n«${result.text}»\n\n${response.text}`,baseText:response.text,transcript:result.text,voice:true};
  }
 }

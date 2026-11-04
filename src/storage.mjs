@@ -24,6 +24,7 @@ export class CoreStore {
       CREATE TABLE IF NOT EXISTS calendar_items(item_id TEXT PRIMARY KEY,owner TEXT NOT NULL,calendar_id TEXT NOT NULL,filter_key TEXT NOT NULL,excluded INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS ui_views(token TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,expires_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ui_state(owner TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS ui_profiles(owner TEXT PRIMARY KEY,onboarding INTEGER NOT NULL DEFAULT 0,morning_from TEXT);
       CREATE TABLE IF NOT EXISTS action_records(token TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,state TEXT NOT NULL);
 `);
     this.db.prepare('INSERT OR IGNORE INTO bob_schema VALUES (1)').run();
@@ -34,6 +35,7 @@ export class CoreStore {
     requireThat(typeof owner === 'string' && /^[\w:-]{1,100}$/.test(owner), 'INVALID_OWNER', 'Некорректный владелец.');
     this.db.prepare('INSERT OR IGNORE INTO users(id,timezone,morning_time,reminder_minutes) VALUES (?,?,?,?)').run(owner, settings.timezone ?? 'Asia/Tomsk', settings.morningTime ?? null, settings.reminderMinutes ?? 60);
     this.db.prepare('INSERT OR IGNORE INTO alpha_preferences(owner) VALUES (?)').run(owner);
+    this.db.prepare('INSERT OR IGNORE INTO ui_profiles(owner) VALUES (?)').run(owner);
     return this.user(owner);
   }
   user(owner) {

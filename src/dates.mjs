@@ -126,6 +126,9 @@ export function resolveDate(phrase, {now,timezone='Asia/Tomsk',requireTime=false
     return {day:dayAt(at,zone),at,precision:'minute',timezone:zone,source,approximate:/примерно|около|где[ -]?то|\s~\s/u.test(text)};
   }
   let date=calendarCandidates(text,today),clock=clockCandidates(text);
+  if(clock&&context&&context!==text&&!/утра|утром|дня|днем|вечера|вечером|ночи|ночью|\d{1,2}[:.]\d{2}/u.test(text)){
+    const periods=[...new Set([...context.matchAll(/(?:^|[^а-я])(утра|утром|дня|днем|вечера|вечером|ночи|ночью)(?=$|[^а-я])/gu)].map(match=>match[1]))];if(periods.length===1)clock=clockCandidates(text+' '+periods[0]);
+  }
   if(!date && context && context!==text)date=calendarCandidates(context,today);
   if(!clock && context && context!==text)clock=clockCandidates(context);
   const hasPart=/вечер|утр|ноч[ьи]|днем|после\s+обеда/u.test(text+' '+context);
