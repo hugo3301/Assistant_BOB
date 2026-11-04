@@ -28,7 +28,7 @@ export const HELP = `Я BOB, твой личный помощник. Напиш�
 
 Альфа: серии задаются командой, сложные даты могут требовать уточнения. Сообщения с делами обрабатывает Cloudflare Workers AI. Неотправленные уведомления видны в /status.`;
 export class Alpha {
-  constructor(store, assistant, { clock = () => new Date().toISOString() } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; this.bulk=new BulkActions(store,{clock});this.ui=new BotUI(store,{clock,dispatch:(owner,text,options)=>this.handle(owner,text,{...options,skipUi:true})}); }
+  constructor(store, assistant, { clock = () => new Date().toISOString(),admin=false } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; this.bulk=new BulkActions(store,{clock});this.ui=new BotUI(store,{clock,admin,dispatch:(owner,text,options)=>this.handle(owner,text,{...options,skipUi:true})}); }
   preferences(owner) { return this.store.db.prepare('SELECT * FROM alpha_preferences WHERE owner=?').get(owner); }
   async handle(owner, text, { requestId=randomUUID(), documentText,caption='',requestText,callback,skipUi=false } = {}) {
     requireThat(this.assistant.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Нет доступа.');

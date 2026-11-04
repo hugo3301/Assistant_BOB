@@ -1,7 +1,10 @@
 import { CoreStore } from './storage.mjs';
 export class CloudStore extends CoreStore {
   constructor(storage) {
-    super({
+    super(cloudDatabase(storage));
+  }
+}
+export function cloudDatabase(storage){return{
       exec: sql => storage.sql.exec(sql),
       prepare: sql => ({
         all: (...args) => storage.sql.exec(sql, ...args).toArray(),
@@ -10,6 +13,4 @@ export class CloudStore extends CoreStore {
       }),
       transaction: fn => storage.transactionSync(fn),
       close: () => {},
-    });
-  }
-}
+    };}

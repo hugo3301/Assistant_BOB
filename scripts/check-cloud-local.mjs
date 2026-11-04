@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 const sent = [], calls = [];let failNextSend=false; const secret='synthetic-webhook-secret-for-local-tests', admin='synthetic-admin-secret-for-local-tests';
 let calendarBody='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//BOB runtime tests//EN\r\nBEGIN:VEVENT\r\nUID:runtime-class\r\nSUMMARY:Runtime calendar class\r\nDTSTART;TZID=Asia/Tomsk:20261105T150000\r\nDTEND;TZID=Asia/Tomsk:20261105T160000\r\nEND:VEVENT\r\nEND:VCALENDAR';
-const configuration=convertV4MiniflareOptions({unsafeInspectDurableObjects:true,name:'bob-cloud-test',modules:true,scriptPath:resolve('work/build/worker.js'),compatibilityDate:'2026-11-04',compatibilityFlags:['nodejs_compat'],durableObjects:{BOB:{className:'BobObject',useSQLite:true}},resourcePersistencePath:resolve(`work/cloud-test-${Date.now()}`),bindings:{TELEGRAM_OWNER_ID:'123',TELEGRAM_BOT_TOKEN:'123456789:'+ 'A'.repeat(35),TELEGRAM_WEBHOOK_SECRET:secret,ADMIN_SECRET:admin,CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),WORKERS_AI_TOKEN:'synthetic-workers-ai-token-for-local-tests'},outboundService:async request=>{
+const configuration=convertV4MiniflareOptions({unsafeInspectDurableObjects:true,name:'bob-cloud-test',modules:true,scriptPath:resolve('work/build/worker.js'),compatibilityDate:'2026-11-04',compatibilityFlags:['nodejs_compat'],durableObjects:{BOB:{className:'BobObject',useSQLite:true},CONTROL:{className:'ControlObject',useSQLite:true}},resourcePersistencePath:resolve(`work/cloud-test-${Date.now()}`),bindings:{TELEGRAM_OWNER_ID:'123',TELEGRAM_BOT_TOKEN:'123456789:'+ 'A'.repeat(35),TELEGRAM_WEBHOOK_SECRET:secret,ADMIN_SECRET:admin,CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),WORKERS_AI_TOKEN:'synthetic-workers-ai-token-for-local-tests'},outboundService:async request=>{
   const url=new URL(request.url);calls.push(url.hostname);
   if(url.hostname==='api.telegram.org'){
     if(url.pathname.startsWith('/file/'))return new Response(calendarBody);
@@ -67,6 +67,21 @@ try{
   await mf.dispose();mf=new Miniflare(configuration);
   await until(()=>sent.filter(message=>message.text).length===count+2);
   assert.match(sent.filter(message=>message.text).at(-2).text,/Сегодня/);assert.match(sent.filter(message=>message.text).at(-1).text,/Ближайшие 7 дней/);
-  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
+  for(let i=0;i<9;i++){
+    const before=sent.filter(message=>message.text?.includes('start=join_')).length;
+    await request('/telegram/webhook',update(100+i,'/invite'),{'X-Telegram-Bot-Api-Secret-Token':secret});
+    await until(()=>sent.filter(message=>message.text?.includes('start=join_')).length===before+1);
+    const invitation=/https:\/\/t.me\/mybob_robot\?start=(join_[\w-]+)/u.exec(sent.filter(message=>message.text?.includes('start=join_')).at(-1).text)[1];
+    await request('/telegram/webhook',update(200+i,'/start '+invitation,200+i),{'X-Telegram-Bot-Api-Secret-Token':secret});
+    await request('/telegram/webhook',update(300+i,`Добавь задачу Личная ${i} к 12 ноября`,200+i),{'X-Telegram-Bot-Api-Secret-Token':secret});
+    await until(()=>sent.some(message=>String(message.chat_id)===String(200+i)&&message.text?.includes(`Добавил: Личная ${i}`)));
+  }
+  const registry=await(await request('/admin/registry',null,{Authorization:`Bearer ${admin}`})).json();assert.equal(registry.members.filter(member=>member.active).length,10);assert.equal((await status()).items,2);
+  for(let i=0;i<9;i++){const db=await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:`owner:${200+i}:v1`});const rows=await db.exec("SELECT owner,title FROM items WHERE status='open'");assert.equal(rows.length,1);assert.equal(rows[0].owner,String(200+i));assert.equal(rows[0].title,`Личная ${i}`);}
+  await request('/telegram/webhook',update(400,'Зафиксируй задачу Проверка сервера к 12 ноября',200),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.some(message=>String(message.chat_id)==='200'&&message.text?.includes('Добавил: Проверка сервера')));
+  const metered=await(await request('/admin/registry',null,{Authorization:`Bearer ${admin}`})).json();assert.equal(metered.usage.spent,1);assert.equal(metered.usage.reserved,0);
+  await request('/telegram/webhook',update(401,'/members',201),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.some(message=>String(message.chat_id)==='201'&&message.text?.includes('доступен владельцу')));
+  await mf.dispose();mf=new Miniflare(configuration);assert.equal((await(await request('/admin/registry',null,{Authorization:`Bearer ${admin}`})).json()).members.length,10);assert.equal((await status()).items,2);
+  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

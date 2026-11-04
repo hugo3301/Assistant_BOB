@@ -2,9 +2,9 @@ import { BobError, requireThat } from './errors.mjs';
 import { SYSTEM, TOOLS } from './tools.mjs';
 
 export class WorkersAI {
-  constructor(store, { accountId, token, dailyBudget = 7500, maxTokens = 900, timeoutMs=12000, clock = () => new Date().toISOString(), fetcher = fetch } = {}) {
+  constructor(store, { accountId, token, dailyBudget = 7500, maxTokens = 900, timeoutMs=12000, budget=null, clock = () => new Date().toISOString(), fetcher = fetch } = {}) {
     requireThat(/^[a-f0-9]{32}$/i.test(accountId ?? '') && typeof token === 'string' && token.length > 20, 'AI_CONFIG', 'API-доступ к ИИ не настроен.');
-    this.store = store; this.accountId = accountId; this.token = token; this.dailyBudget = dailyBudget; this.maxTokens = maxTokens; this.timeoutMs=timeoutMs;this.clock = clock; this.fetcher = fetcher;
+    this.store = store; this.accountId = accountId; this.token = token; this.dailyBudget = dailyBudget; this.maxTokens = maxTokens; this.timeoutMs=timeoutMs;this.clock = clock; this.fetcher = fetcher;this.budget=budget;
   }
   async complete({ context, text, feedback = null,timeoutMs=this.timeoutMs }) {
     const body = { model: '@cf/zai-org/glm-4.7-flash', temperature: 0.1, max_tokens: this.maxTokens, stream: false, chat_template_kwargs: { enable_thinking: false, clear_thinking: true }, tools: TOOLS, tool_choice: 'required', messages: [
@@ -14,7 +14,7 @@ export class WorkersAI {
       { role: 'user', content: text },
     ] };
     const upper = (Buffer.byteLength(JSON.stringify(body), 'utf8') + 200) * 5500 / 1e6 + this.maxTokens * 36400 / 1e6;
-    const reservation = this.store.reserveBudget(this.clock(), upper, this.dailyBudget);
+    const reservation = this.budget?await this.budget.reserve(upper,'llm'):this.store.reserveBudget(this.clock(), upper, this.dailyBudget);
     let observed = null;
     try {
       const response = await (0, this.fetcher)(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/v1/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1,Math.min(this.timeoutMs,timeoutMs))) });
@@ -27,6 +27,6 @@ export class WorkersAI {
     } catch (error) {
       if (error instanceof BobError) throw error;
       throw new BobError(error.name === 'TimeoutError' ? 'AI_TIMEOUT' : 'AI_NETWORK', 'ИИ не ответил. Записи не изменены; команды и напоминания доступны.');
-    } finally { this.store.settleBudget(reservation, observed); }
+    } finally { if(this.budget)await this.budget.settle(reservation,observed);else this.store.settleBudget(reservation, observed); }
   }
 }

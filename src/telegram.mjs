@@ -8,6 +8,7 @@ export function isOwnerUpdate(update, owner) {
   const callback=update?.callback_query,message=callback?.message??update?.message,sender=callback?.from??message?.from;
   return Number.isSafeInteger(update?.update_id) && message?.chat?.type === 'private' && String(sender?.id) === String(owner) && String(message?.chat?.id) === String(owner) && !sender?.is_bot && (!callback||(typeof callback.id==='string'&&typeof callback.data==='string'&&callback.data.length<=64&&Number.isSafeInteger(message.message_id)));
 }
+export function privateUpdateOwner(update){const message=update?.callback_query?.message??update?.message,sender=update?.callback_query?.from??message?.from;const owner=String(sender?.id??'');return /^[1-9]\d{0,19}$/u.test(owner)&&isOwnerUpdate(update,owner)?owner:null;}
 export class Telegram {
   constructor(token, {fetcher = fetch} = {}) { requireThat(/^\d+:[A-Za-z0-9_-]{30,}$/.test(token ?? ''),'TG_CONFIG','Telegram не настроен.'); this.token = token; this.fetcher = fetcher; }
   async call(method, data, multipart = false) {

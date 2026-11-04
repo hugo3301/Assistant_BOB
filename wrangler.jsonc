@@ -7,11 +7,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
-  "durable_objects": {"bindings": [{"name":"BOB","class_name":"BobObject"}]},
-  "migrations": [{"tag":"v1","new_sqlite_classes":["BobObject"]}],
+  "durable_objects": {"bindings": [{"name":"BOB","class_name":"BobObject"},{"name":"CONTROL","class_name":"ControlObject"}]},
+  "migrations": [{"tag":"v1","new_sqlite_classes":["BobObject"]},{"tag":"v2","new_sqlite_classes":["ControlObject"]}],
   "triggers": {"crons":["* * * * *"]},
   "observability": {"enabled":false},
   "vars": {
+    "ALPHA_ACCESS_MODE":"invite",
     "CLOUDFLARE_ACCOUNT_ID":"f4b692a8756a3f726f790132ad1a5552",
     "AI_BUDGET_SEED_DAY":"2026-11-04",
     "AI_BUDGET_SEED_NEURONS":"6000"
