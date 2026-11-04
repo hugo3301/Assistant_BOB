@@ -74,10 +74,10 @@ export class BobObject extends DurableObject {
     try {
       const update = JSON.parse(job.payload), message = update.message; let response;
       if (message.document) {
-        if (!/\.ics$/i.test(message.document.file_name ?? '') || message.document.file_size > 200000) response = {text:'Пришли расписание файлом .ics до 200 КБ. Другие вложения в альфе пока не обрабатываю.'};
+        if ((!/\.ics$/i.test(message.document.file_name ?? '')&&!['text/calendar','application/ics','application/icalendar'].includes(message.document.mime_type)) || message.document.file_size > 1000000) response = {text:'Пришли расписание файлом .ics до 1 МБ. Другие вложения в альфе пока не обрабатываю.'};
         else {
           const documentText = await this.telegram.calendar(message.document.file_id);
-          response = await this.alpha.handle(this.owner,`Файл расписания ${message.document.file_unique_id}`,{requestId:`tg:${job.id}`,documentText});
+          response = await this.alpha.handle(this.owner,`Файл расписания ${message.document.file_unique_id}`,{requestId:`tg:${job.id}`,documentText,caption:message.caption??''});
         }
       } else if (typeof message.text === 'string' && message.text.length <= 8000) response = await this.alpha.handle(this.owner,message.text,{requestId:`tg:${job.id}`});
       else response = {text:'Пока понимаю текст и расписание .ics. Напиши /help.'};

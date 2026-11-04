@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { BobError, requireThat } from './errors.mjs';
 import { dayAt, addDays, localToUtc, formatDate, normalize } from './dates.mjs';
 import { calendarPreview, calendarImport } from './calendar.mjs';
+import {prepareCalendarUpload,prepareCalendarChoice,isCalendarAnswer} from './calendar-flow.mjs';
 
 export const HELP = `Я BOB, твой личный помощник. Напиши: «Добавь задачу сдать отчёт к 12 ноября» или «Встреча завтра в 15:00, напомни за час». Следом можно: «Перенеси её на завтра в 16:00».
 
@@ -15,7 +16,7 @@ export const HELP = `Я BOB, твой личный помощник. Напиш�
 /done id — завершить задачу; /remove id — отменить дело
 /repeat пн,ср,пт 18:00 60 Зал — еженедельные занятия (60 минут)
 /repeats — серии; /repeat stop id — остановить серию
-Пришли .ics — покажу группы занятий; /ical keep 1,3 — импортировать только выбранные
+Пришли .ics — расставлю пары и напоминания. Если в файле разные группы, один раз уточню свои обычным вопросом и запомню выбор.
 /diet текст — сохранить свой рацион; /diet — показать
 /settings — настройки; /morning 08:00 или off; /remind 60; /timezone Asia/Tomsk
 /export — выгрузить данные файлом
@@ -25,16 +26,19 @@ export const HELP = `Я BOB, твой личный помощник. Напиш�
 export class Alpha {
   constructor(store, assistant, { clock = () => new Date().toISOString() } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; }
   preferences(owner) { return this.store.db.prepare('SELECT * FROM alpha_preferences WHERE owner=?').get(owner); }
-  async handle(owner, text, { requestId, documentText } = {}) {
+  async handle(owner, text, { requestId, documentText,caption='' } = {}) {
     requireThat(this.assistant.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Нет доступа.');
+    this.store.ensureUser(owner);
     const command = /^\/(\w+)(?:@[\w]+)?(?:\s+([\s\S]*))?$/.exec(text.trim());
-    const name = documentText === undefined ? command?.[1]?.toLowerCase() : 'calendar_upload', argument = command?.[2]?.trim() ?? '';
-    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','export'].includes(name)) return this.assistant.handle(owner, text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId });
+    let name = documentText === undefined ? command?.[1]?.toLowerCase() : 'calendar_upload';
+    const argument = command?.[2]?.trim() ?? '';
+    if(!name&&isCalendarAnswer(this.store,owner,text,this.clock()))name='calendar_choice';
+    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)) return this.assistant.handle(owner, text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId });
     this.store.ensureUser(owner); const now = this.clock();
-    const claim = this.store.beginTurn(owner, requestId, documentText === undefined ? text : text + '\n' + documentText, now);
+    const claim = this.store.beginTurn(owner, requestId, documentText === undefined ? text : text + '\n' + caption + '\n' + documentText, now);
     if (claim.cached) return { ...claim.cached, replayed: true };
     const user = this.store.user(owner), preferences = this.preferences(owner);
-    let result = '', mutate = () => {}, file = null;
+    let result = '', mutate = () => {}, file = null,extra={};
     try {
       if (name === 'start' || name === 'help') result = HELP;
       if (name === 'settings') result = `Часовой пояс: ${user.timezone}\nСводка: ${user.morning_time ?? 'выключена'}\nНапоминать за ${user.reminder_minutes} мин.\nПроект новых дел: ${preferences.project ?? 'не выбран'}\nКатегория: ${preferences.area}`;
@@ -97,20 +101,15 @@ export class Alpha {
       }
       if (name === 'repeats') result = this.store.db.prepare('SELECT * FROM weekly_series WHERE owner=? AND active=1').all(owner).map(series => `${series.title} — ${series.time}, ${series.timezone} [${series.id}]`).join('\n') || 'Активных серий нет. Пример: /repeat пн,ср,пт 18:00 60 Зал';
       if (name === 'calendar_upload') {
-        const preview = calendarPreview(documentText, user.timezone, now);
-        mutate = () => this.store.db.prepare('INSERT INTO calendar_previews(owner,body,selected,created_at) VALUES (?,?,NULL,?) ON CONFLICT(owner) DO UPDATE SET body=excluded.body,selected=NULL,created_at=excluded.created_at').run(owner,documentText,now);
-        result = preview.text;
+        const plan=prepareCalendarUpload(this.store,owner,documentText,caption,now);result=plan.text;mutate=plan.mutate;extra.pending=null;
       }
+      if(name==='calendar_choice'){const plan=prepareCalendarChoice(this.store,owner,text,now);result=plan.text;mutate=plan.mutate;extra.pending=null;}
       if (name === 'ical') {
         const staged = this.store.db.prepare('SELECT * FROM calendar_previews WHERE owner=?').get(owner);
         requireThat(staged, 'CALENDAR', 'Сначала пришли .ics файлом.');
         if (!argument || argument === 'list') result = calendarPreview(staged.body,user.timezone,now).text;
         else {
-          const keep = /^keep\s+([\d,\s]+)$/u.exec(argument); requireThat(keep, 'CALENDAR', 'Например: /ical keep 1,3 — только выбранные группы.');
-          const selected = [...new Set(keep[1].split(',').map(value => Number(value.trim())))];
-          const imported = calendarImport(this.store, owner, staged.body, selected, now, true);
-          mutate = () => { calendarImport(this.store,owner,staged.body,selected,now); this.store.db.prepare('UPDATE calendar_previews SET selected=? WHERE owner=?').run(JSON.stringify(selected),owner); };
-          result = `Импортировано занятий: ${imported.added}; обновлено: ${imported.updated}; совпавших записей без изменений: ${imported.skipped}. Горизонт импорта — 90 дней. Повторная загрузка требует выбора групп; старые несовпавшие занятия автоматически не удаляются.`;
+          const plan=prepareCalendarChoice(this.store,owner,argument,now);result=plan.text;mutate=plan.mutate;extra.pending=null;
         }
       }
       if (name === 'status') {
@@ -121,7 +120,7 @@ export class Alpha {
         file = { name: 'bob-export.json', text: JSON.stringify({version:1,exportedAt:now,user:{timezone:user.timezone,morningTime:user.morning_time,reminderMinutes:user.reminder_minutes},preferences,items:this.store.items(owner,{includeClosed:true}),series:this.store.db.prepare('SELECT * FROM weekly_series WHERE owner=?').all(owner),projects:this.store.db.prepare('SELECT name FROM projects WHERE owner=?').all(owner)},null,2) };
         result = 'Экспорт твоих данных BOB. Храни файл у себя; ключей доступа в нём нет.';
       }
-      return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',text:result,changed:0,modelCalls:0,...(file ? {file} : {})},mutate);
+      return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',text:result,changed:0,modelCalls:0,...extra,...(file ? {file} : {})},mutate);
     } catch (error) {
       if (!(error instanceof BobError)) throw error;
       return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'error',code:error.code,text:error.message,changed:0,modelCalls:0});

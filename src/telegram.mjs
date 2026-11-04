@@ -22,12 +22,12 @@ export class Telegram {
   document(chat, file) { const form = new FormData(); form.set('chat_id',String(chat)); form.set('document',new Blob([file.text],{type:'application/json'}),file.name); return this.call('sendDocument',form,true); }
   async calendar(fileId) {
     const info = await this.call('getFile',{file_id:fileId});
-    requireThat(info.file_size <= 200000 && /^[\w/.-]+$/.test(info.file_path ?? '') && !info.file_path.includes('..'),'ICAL_SIZE','Нужен .ics не больше 200 КБ.');
+    requireThat((info.file_size??0) <= 1000000 && /^[\w/.-]+$/.test(info.file_path ?? '') && !info.file_path.includes('..'),'ICAL_SIZE','Нужен .ics не больше 1 МБ.');
     try {
       const response = await (0, this.fetcher)(`https://api.telegram.org/file/bot${this.token}/${info.file_path}`,{signal:AbortSignal.timeout(15000)});
       requireThat(response.ok,'ICAL_DOWNLOAD','Не удалось скачать файл Telegram.');
       const chunks = []; let size = 0;
-      for await (const chunk of response.body) { size += chunk.length; requireThat(size <= 200000,'ICAL_SIZE','Файл больше 200 КБ.'); chunks.push(chunk); }
+      for await (const chunk of response.body) { size += chunk.length; requireThat(size <= 1000000,'ICAL_SIZE','Файл больше 1 МБ.'); chunks.push(chunk); }
       const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) {bytes.set(chunk,offset);offset += chunk.length;}
       return new TextDecoder().decode(bytes);
     } catch (error) { if (error instanceof BobError) throw error; throw new BobError('ICAL_DOWNLOAD','Не удалось скачать файл Telegram.'); }

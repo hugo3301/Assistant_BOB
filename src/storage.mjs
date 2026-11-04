@@ -20,6 +20,8 @@ export class CoreStore {
       CREATE TABLE IF NOT EXISTS item_time_meta(item_id TEXT PRIMARY KEY,approximate INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS weekly_series(id TEXT PRIMARY KEY, owner TEXT NOT NULL, title TEXT NOT NULL, days TEXT NOT NULL, time TEXT NOT NULL, duration INTEGER NOT NULL, timezone TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS calendar_previews(owner TEXT PRIMARY KEY, body TEXT NOT NULL, selected TEXT, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS calendar_filters(owner TEXT PRIMARY KEY,calendar_id TEXT NOT NULL,selected_keys TEXT NOT NULL,known_keys TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS calendar_items(item_id TEXT PRIMARY KEY,owner TEXT NOT NULL,calendar_id TEXT NOT NULL,filter_key TEXT NOT NULL,excluded INTEGER NOT NULL DEFAULT 0);
 `);
     this.db.prepare('INSERT OR IGNORE INTO bob_schema VALUES (1)').run();
   }
