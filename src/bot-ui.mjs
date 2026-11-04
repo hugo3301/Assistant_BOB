@@ -1,6 +1,6 @@
 import {randomBytes} from 'node:crypto';
 import {BobError,requireThat} from './errors.mjs';
-import {normalize,dayAt} from './dates.mjs';
+import {normalize,dayAt,addDays} from './dates.mjs';
 import {selectItems,renderList,cardText,PAGE_SIZE,friendlyResponse,displayTitle,localItem,localClock} from './views.mjs';
 import {naturalView} from './natural.mjs';
 import {UI,screen,nav,plural,minuteLabel,truncate,plainEntities} from './ui-kit.mjs';
@@ -9,6 +9,7 @@ import {ZONES,zoneLabel} from './zones.mjs';
 export const uiButton=(text,callback_data)=>({text,callback_data});
 const data=(token,action,value='')=>`u|${token}|${action}|${value}`;
 const areas=['Учёба','Проекты','Зал','Питание','Личное'];
+export const plannerButton=(view,day=null)=>({text:view==='ahead'?'Общая картина на экране':'Открыть календарь',web_app:{url:'https://assistant-bob-alpha.assistant-bob.workers.dev/planner?view='+view+(day?'&date='+day:'')}});
 export class BotUI{
  constructor(store,{clock,dispatch,admin=false}){this.store=store;this.clock=clock;this.dispatch=dispatch;this.admin=admin;}
  snapshot(owner,payload){const token=randomBytes(10).toString('hex');return{token,payload,persist:()=>{this.store.db.prepare('INSERT INTO ui_views VALUES (?,?,?,?)').run(token,owner,JSON.stringify(payload),new Date(Date.parse(this.clock())+86400000).toISOString());this.store.db.prepare('DELETE FROM ui_views WHERE owner=? AND expires_at<?').run(owner,this.clock());}};}
@@ -31,6 +32,7 @@ export class BotUI{
   const user=this.store.user(owner),current=new Map(this.store.items(owner).map(item=>[item.id,item]));
   const entries=snapshot.payload.ids.map(id=>current.get(id)).filter(Boolean).map(item=>localItem(item,user.timezone));
   const rendered=renderList(entries,{scope:filter.scope,now:this.clock(),timezone:user.timezone,page}),rows=[];
+  if(['today','tomorrow','week','ahead','all'].includes(filter.scope))rows.push([plannerButton(filter.date?'day':filter.scope==='week'?'week':['ahead','all'].includes(filter.scope)?'ahead':'day',filter.date??(filter.scope==='tomorrow'?addDays(dayAt(this.clock(),user.timezone),1):null))]);
   for(let index=0;index<rendered.visible.length;index+=2)rows.push(rendered.visible.slice(index,index+2).map((item,local)=>uiButton(`${rendered.page*PAGE_SIZE+index+local+1} · ${truncate(displayTitle(item.title),18)}`,data(snapshot.token,'item',snapshot.payload.ids.indexOf(item.id)))));
   const navigation=[];if(rendered.page>0)navigation.push(uiButton('‹ Назад',data(snapshot.token,'page',rendered.page-1)));if(rendered.page+1<rendered.pages)navigation.push(uiButton('Дальше ›',data(snapshot.token,'page',rendered.page+1)));if(navigation.length)rows.push(navigation);
   if(filter.project)rows.push([uiButton('＋ Дело в этот проект',data(snapshot.token,'addproject'))]);
@@ -88,7 +90,7 @@ export class BotUI{
      const clean=normalize(text).replace(/[!?.,]+$/u,''),scope={'/today':'today','сегодня':'today','/week':'week','неделя':'week','на неделю':'week','/ahead':'ahead','все дела':'ahead','/tasks':'all'}[clean],natural=naturalView(text),number=/^(?:открой\s+)?(\d+)$/u.exec(clean),state=this.state(owner);
      const numberedAction=/^(?:удали|убери|отмени|сдал|сделал|перенеси)\s+(?:дело\s+|задачу\s+|номер\s+|№\s*)?(\d+)(?=\s|[,.!]|$)/u.exec(clean),selected=numberedAction?state.numbers?.[numberedAction[1]]:null,old=selected&&(!this.store.db.prepare('SELECT token FROM ui_views WHERE token=? AND owner=? AND expires_at>?').get(state.token,owner,this.clock())||state.versions?.[selected]!==this.store.item(owner,selected)?.version);
      if(old){view=this.list(owner,{scope:'all'});view.text='Список изменился или устарел. Выбери номер из свежего списка.\n\n'+view.text;view.entities=plainEntities(view.text);}
-     else if(scope)view=this.route(owner,scope);else if(['/start','меню','привет','старт','начать','домой'].includes(clean))view=this.home(owner);else if(['/help','помощь'].includes(clean))view=this.help(owner);else if(['/settings','настройки'].includes(clean))view=this.settings(owner);else if(['/projects','проекты'].includes(clean))view=this.projects(owner);else if(['/repeats','повторения','мои повторения'].includes(clean))view=this.series(owner);else if(['рацион','мой рацион','покажи мой рацион'].includes(clean))view=this.diet(owner);else if(['/add','добавить','добавить дело'].includes(clean))view=this.guide(owner,'add');else if(/^\/find\s+/iu.test(text))view=this.list(owner,{scope:'search',query:text.replace(/^\/find\s+/iu,'').trim()});else if(natural)view=this.list(owner,natural);else if(number&&state.numbers?.[number[1]]&&!this.store.user(owner).pending){this.load(owner,state.token);view=this.card(owner,state.numbers[number[1]],{token:state.token,page:state.page});}else return null;
+     else if(scope)view=this.route(owner,scope);else if(/^\/start p_[a-f0-9]{20}$/u.test(clean)){const entry=this.load(owner,clean.slice(9));requireThat(entry.payload.type==='planner','VIEW_EXPIRED','Открой календарь заново.');view=this.card(owner,entry.payload.id);}else if(['/start','меню','привет','старт','начать','домой'].includes(clean))view=this.home(owner);else if(['/help','помощь'].includes(clean))view=this.help(owner);else if(['/settings','настройки'].includes(clean))view=this.settings(owner);else if(['/projects','проекты'].includes(clean))view=this.projects(owner);else if(['/repeats','повторения','мои повторения'].includes(clean))view=this.series(owner);else if(['рацион','мой рацион','покажи мой рацион'].includes(clean))view=this.diet(owner);else if(['/add','добавить','добавить дело'].includes(clean))view=this.guide(owner,'add');else if(/^\/find\s+/iu.test(text))view=this.list(owner,{scope:'search',query:text.replace(/^\/find\s+/iu,'').trim()});else if(natural)view=this.list(owner,natural);else if(number&&state.numbers?.[number[1]]&&!this.store.user(owner).pending){this.load(owner,state.token);view=this.card(owner,state.numbers[number[1]],{token:state.token,page:state.page});}else return null;
     }
    }
    const claim=this.store.beginTurn(owner,requestId,source,this.clock());if(claim.cached)return{...claim.cached,replayed:true};const user=this.store.user(owner),{persist,...result}=view;return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',changed:0,modelCalls:0,pending:null,edit:Boolean(callback),...result},persist);

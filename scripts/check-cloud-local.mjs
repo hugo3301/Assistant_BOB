@@ -1,5 +1,7 @@
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import assert from 'node:assert/strict';
+import {createHmac} from 'node:crypto';
+import {runInNewContext} from 'node:vm';
 import { resolve } from 'node:path';
 import {ogg} from '../tests/ogg-fixture.mjs';
 import {APP_ORIGIN} from '../src/calendars/pages.mjs';
@@ -78,7 +80,7 @@ try{
   await request('/telegram/webhook',update(6,'/week'),{'X-Telegram-Bot-Api-Secret-Token':secret});
   await until(()=>sent.some(message=>message.reply_markup?.inline_keyboard&&message.text?.includes('Ближайшие 7 дней')));
   const list=sent.find(message=>message.reply_markup?.inline_keyboard&&message.text?.includes('Ближайшие 7 дней'));
-  const cb={update_id:7,callback_query:{id:'synthetic-click',from:{id:123},data:list.reply_markup.inline_keyboard[0][0].callback_data,message:{message_id:6,from:{id:999,is_bot:true},chat:{id:123,type:'private'}}}};
+  const cb={update_id:7,callback_query:{id:'synthetic-click',from:{id:123},data:list.reply_markup.inline_keyboard.flat().find(button=>button.callback_data?.includes('|item|')).callback_data,message:{message_id:6,from:{id:999,is_bot:true},chat:{id:123,type:'private'}}}};
   await request('/telegram/webhook',cb,{'X-Telegram-Bot-Api-Secret-Token':secret});
   await until(()=>sent.some(message=>message.callback_query_id==='synthetic-click')&&sent.some(message=>message.message_id===6&&message.reply_markup?.inline_keyboard));
   assert.ok(sent.filter(message=>message.text).every(message=>! /\[(?:task|ical)-/.test(message.text)));
@@ -144,6 +146,18 @@ try{
   const yandexDb=await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:'owner:207:v1'});await until(async()=>Boolean((await yandexDb.exec('SELECT last_ok FROM calendar_connections'))[0]?.last_ok));assert.equal((await yandexDb.exec("SELECT * FROM items WHERE title='Из Яндекса'")).length,1);
   await request('/telegram/webhook',update(611,'Завтра в 14:20 встреча для Яндекса на час',207),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>yandexWrites.length>0);assert.equal(yandexResources.size,2);assert.equal((await yandexDb.exec('SELECT credentials FROM calendar_connections'))[0].credentials.includes('synthetic-calendar-app-password'),false);
   await mf.dispose();mf=new Miniflare(configuration);assert.equal((await(await request('/admin/registry',null,{Authorization:`Bearer ${admin}`})).json()).members.length,10);assert.equal((await status()).items,2);
-  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
+  const plannerHtml=await(await request('/planner?demo=true')).text();assert.match(plannerHtml,/const DEMO=null/);
+  const browserGeometry=/const geometry=([\s\S]+?);\nconst \$=/u.exec(plannerHtml)?.[1];assert.ok(browserGeometry);assert.equal(runInNewContext('const geometry='+browserGeometry+';geometry([], ["2026-11-05"], "Asia/Tomsk").length'),1);
+  const signedPlanner=owner=>{const p=new URLSearchParams({user:JSON.stringify({id:owner,first_name:'Synthetic'}),auth_date:String(Math.floor(Date.now()/1000)),query_id:'runtime'});const s=createHmac('sha256','WebAppData').update(('123456789:'+'A'.repeat(35))).digest();p.set('hash',createHmac('sha256',s).update([...p].sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>k+'='+v).join('\n')).digest('hex'));return p.toString();};
+  const plannerPost=(path,owner,extra={})=>request(path,{initData:signedPlanner(owner),...extra},{Origin:APP_ORIGIN});
+  assert.equal((await request('/planner/data',{}, {Origin:APP_ORIGIN})).status,401);
+  assert.equal((await plannerPost('/planner/data',9999)).status,403);
+  const privatePlan=await(await plannerPost('/planner/data',208)).json();assert.ok(privatePlan.items.some(item=>item.title==='Из Google после правки'));assert.ok(privatePlan.items.every(item=>!item.owner));assert.doesNotMatch(JSON.stringify(privatePlan),/synthetic-google-refresh|synthetic-client-secret|Личная 0/);
+  const ownPlan=await(await plannerPost('/planner/data',123)).json();assert.equal(ownPlan.items.length,2);assert.equal((await plannerPost('/planner/item',123,{id:privatePlan.items[0].id})).status,404);
+  const deepLink=await(await plannerPost('/planner/item',123,{id:ownPlan.items[0].id})).json(),deepPayload=new URL(deepLink.url).searchParams.get('start');
+  const beforeDeep=sent.length;
+  await request('/telegram/webhook',update(650,'/start '+deepPayload),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeDeep).some(message=>message.text?.includes(ownPlan.items[0].title)));assert.equal((await status()).items,2);
+  await request('/telegram/webhook',update(651,'/start '+deepPayload,200),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeDeep).some(message=>String(message.chat_id)==='200'&&message.text?.includes('устарела')));
+  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,plannerSignedIsolation:true,plannerCardDeepLink:true,bundledBrowserGeometry:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

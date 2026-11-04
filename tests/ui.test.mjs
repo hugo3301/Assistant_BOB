@@ -15,7 +15,7 @@ test('paged lists, day headings, conflict marks and cards never expose internal 
   let page=await run('/week');assert.match(page.text,/Завтра/);assert.match(page.text,/15:00–16:30/);assert.match(page.text,/совпадение/);assert.match(page.text,/Страница 1 из 3 · всего 14/);assert.doesNotMatch(page.text,/ical-|\[Учёба\]/);
   const card=await click(button(page,'1 ·'));assert.match(card.text,/Лабораторная/);assert.doesNotMatch(card.text,/ical-/);assert.ok(button(card,'Перенести'));
   page=await click(button(await click(button(card,'К списку')),'Дальше'));assert.match(page.text,/Страница 2 из 3/);
-  assert.ok(page.replyMarkup.inline_keyboard.flat().every(item=>Buffer.byteLength(item.callback_data)<=64));
+  assert.ok(page.replyMarkup.inline_keyboard.flat().every(item=>item.web_app?/^https:\/\/assistant-bob-alpha\.assistant-bob\.workers\.dev\/planner\?view=(day|week|ahead)$/u.test(item.web_app.url):Buffer.byteLength(item.callback_data)<=64));
   page=await click(button(page,'Дальше'));assert.match(page.text,/Страница 3 из 3/);assert.match(page.text,/14\./);
  }finally{store.close();}
 });

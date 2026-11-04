@@ -16,6 +16,8 @@ import {splitRichMessage} from './ui-kit.mjs';
 import {CalendarService} from './calendars/service.mjs';
 import {calendarPublic} from './calendars/public.mjs';
 import {canonical as calendarCanonical} from './calendars/model.mjs';
+import {PlannerService} from './planner/service.mjs';
+import {plannerPublic} from './planner/public.mjs';
 export {ControlObject} from './control-worker.mjs';
 const VERSION = '0.2.0-alpha';
 function equalSecret(actual, expected) { if (typeof actual !== 'string' || typeof expected !== 'string' || expected.length < 24) return false; const a = new TextEncoder().encode(actual), b = new TextEncoder().encode(expected); return a.length === b.length && timingSafeEqual(a,b); }
@@ -23,8 +25,9 @@ function object(env) {return{fetch:(url,init)=>callUser(env,String(env.TELEGRAM_
 export default {
   async fetch(request,env,ctx) {
     const path = new URL(request.url).pathname;
-    if (path === '/health' && request.method === 'GET') return Response.json({service:'BOB',version:VERSION,status:'ok',features:{voice:true,invitedUsers:10,ui:2,calendarSync:'two-way'}},{headers:{'Cache-Control':'no-store'}});
+    if (path === '/health' && request.method === 'GET') return Response.json({service:'BOB',version:VERSION,status:'ok',features:{voice:true,invitedUsers:10,ui:2,calendarSync:'two-way',planner:true}},{headers:{'Cache-Control':'no-store'}});
     if(path.startsWith('/calendars/'))return calendarPublic(request,env);
+    if(path==='/planner'||path.startsWith('/planner/'))return plannerPublic(request,env);
     if (path === '/admin/status' && request.method === 'GET' && equalSecret(request.headers.get('Authorization'), `Bearer ${env.ADMIN_SECRET}`)) return object(env).fetch('https://internal/status');
     if(path==='/admin/telegram'&&request.method==='POST'&&equalSecret(request.headers.get('Authorization'),`Bearer ${env.ADMIN_SECRET}`))return object(env).fetch(new Request('https://internal/configure',{method:'POST'}));
     if(path==='/admin/registry'&&request.method==='GET'&&equalSecret(request.headers.get('Authorization'),`Bearer ${env.ADMIN_SECRET}`))return Response.json(await callControl(env,'/overview',{owner:String(env.TELEGRAM_OWNER_ID)}));
@@ -39,7 +42,7 @@ export default {
       const message=update.message,start=/^\/start(?:@[\w]+)?(?:\s+([\s\S]*))?$/u.exec(message?.text??''),code=start?.[1]?.startsWith('join_')?start[1].slice(5):null;
       const access=await callControl(env,'/access',{owner,start:Boolean(start),code,label:message?.from?.first_name??'Участник'});
       if(!access.allowed){const telegram=new Telegram(env.TELEGRAM_BOT_TOKEN);if(update.callback_query)ctx.waitUntil(telegram.answer(update.callback_query.id).catch(()=>{}));if((await callControl(env,'/notice',{owner})).send)ctx.waitUntil(telegram.send(owner,access.reason==='full'?'В альфе пока заняты все 10 мест. Попроси владельца сообщить, когда появится место.':access.reason==='revoked'?'Доступ к альфе отключён владельцем. Твои данные сохранены.':'BOB сейчас работает по приглашениям. Открой личную ссылку-приглашение от владельца и нажми «Начать».').catch(()=>{}));return new Response('ok');}
-      if(start)message.text='/start';
+      if(start)message.text=/^p_[a-f0-9]{20}$/u.test(start[1]??'')?'/start '+start[1]:'/start';
       return callUser(env,owner,'/enqueue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(update)});
     } catch { return new Response('Temporarily unavailable',{status:503}); }
   },
@@ -62,7 +65,7 @@ export class BobObject extends DurableObject {
     const fresh=!this.store.user(owner);this.store.ensureUser(owner,{timezone:'Asia/Tomsk',morningTime:'08:00',reminderMinutes:60});
     if(fresh&&owner!==String(this.env.TELEGRAM_OWNER_ID))this.store.db.prepare('UPDATE ui_profiles SET onboarding=1,morning_from=? WHERE owner=?').run(addDays(dayAt(new Date().toISOString(),'Asia/Tomsk'),1),owner);
     const now=new Date().toISOString();if(owner===String(this.env.TELEGRAM_OWNER_ID)&&this.env.AI_BUDGET_SEED_DAY===now.slice(0,10))this.store.db.prepare('INSERT OR IGNORE INTO budget(day,spent,reserved) VALUES (?,?,0)').run(now.slice(0,10),Number(this.env.AI_BUDGET_SEED_NEURONS)||0);
-    this.budget=new SharedBudget(this.env,owner);this.assistant=new Assistant(this.store,{provider:new WorkersAI(this.store,{accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget}),allowedOwners:[owner]});this.alpha=new Alpha(this.store,this.assistant,{admin:owner===String(this.env.TELEGRAM_OWNER_ID)});this.voice=new VoiceFlow(this.store,owner,{telegram:this.telegram,speech:new SpeechAI({accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget})});this.calendars=new CalendarService(this.store,owner,this.env,{schedule:()=>this.wake(),enabled:()=>!this.paused});this.reminders=new ReminderWorker(this.store);this.paused=this.store.db.prepare("SELECT value FROM runtime_health WHERE key='paused'").get()?.value==='1';
+    this.budget=new SharedBudget(this.env,owner);this.assistant=new Assistant(this.store,{provider:new WorkersAI(this.store,{accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget}),allowedOwners:[owner]});this.alpha=new Alpha(this.store,this.assistant,{admin:owner===String(this.env.TELEGRAM_OWNER_ID)});this.voice=new VoiceFlow(this.store,owner,{telegram:this.telegram,speech:new SpeechAI({accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget})});this.calendars=new CalendarService(this.store,owner,this.env,{schedule:()=>this.wake(),enabled:()=>!this.paused});this.planner=new PlannerService(this.store,owner,this.alpha.ui,{enabled:()=>!this.paused});this.reminders=new ReminderWorker(this.store);this.paused=this.store.db.prepare("SELECT value FROM runtime_health WHERE key='paused'").get()?.value==='1';
   }
   health(key) { this.store.db.prepare('INSERT INTO runtime_health VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,new Date().toISOString()); }
   async fetch(request) {
@@ -70,6 +73,7 @@ export class BobObject extends DurableObject {
     const path = new URL(request.url).pathname, now = new Date().toISOString();
     if (path === '/status') return Response.json({version:VERSION,latency:this.latency(),settings:{timezone:this.store.user(this.owner).timezone,morningTime:this.store.user(this.owner).morning_time,reminderMinutes:this.store.user(this.owner).reminder_minutes},usage:this.store.usage(now.slice(0,10)),health:this.store.db.prepare('SELECT * FROM runtime_health').all(),jobs:this.store.db.prepare('SELECT status,COUNT(*) AS count FROM telegram_jobs GROUP BY status').all(),outbox:this.store.db.prepare('SELECT status,COUNT(*) AS count FROM telegram_outbox GROUP BY status').all(),reminders:this.store.db.prepare('SELECT status,COUNT(*) AS count FROM reminders GROUP BY status').all(),items:this.store.items(this.owner).length,calendars:{configured:Boolean(this.env.CALENDAR_SECRET_KEY),googleConfigured:Boolean(this.env.GOOGLE_CLIENT_ID&&this.env.GOOGLE_CLIENT_SECRET),connections:this.store.db.prepare("SELECT provider,status,is_default,last_ok,last_error FROM calendar_connections WHERE owner=? AND status!='off' ORDER BY created_at").all(this.owner),linked:this.store.db.prepare("SELECT COUNT(*) AS count FROM calendar_links WHERE owner=?").get(this.owner).count,conflicts:this.store.db.prepare("SELECT COUNT(*) AS count FROM calendar_conflicts WHERE owner=? AND status='pending'").get(this.owner).count}});
     if(path==='/calendars/http')return this.calendars.http(request);
+    if(path==='/planner/data'||path==='/planner/item'){try{return await this.planner.http(request);}catch(error){return Response.json({code:error instanceof BobError?error.code:'PLANNER_UNAVAILABLE',text:error instanceof BobError?error.message:'План временно недоступен. Попробуй обновить.'},{status:error?.code==='PLANNER_RATE'?429:error?.code==='PLANNER_ACCESS'?403:error?.code==='PLANNER_ITEM'?404:500,headers:{'Cache-Control':'no-store'}});}}
     if (path === '/enqueue' && request.method === 'POST') {
       if(this.paused)return new Response('ok');
       const update = await request.json(); if (!isOwnerUpdate(update,this.owner)) return new Response('ok');
