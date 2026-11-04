@@ -24,6 +24,7 @@ export class CoreStore {
       CREATE TABLE IF NOT EXISTS calendar_items(item_id TEXT PRIMARY KEY,owner TEXT NOT NULL,calendar_id TEXT NOT NULL,filter_key TEXT NOT NULL,excluded INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS ui_views(token TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,expires_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ui_state(owner TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS action_records(token TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,state TEXT NOT NULL);
 `);
     this.db.prepare('INSERT OR IGNORE INTO bob_schema VALUES (1)').run();
   }
@@ -84,12 +85,35 @@ export class CoreStore {
       requireThat(turn?.lease === lease && !turn.response, 'LEASE_LOST', 'Обработка сообщения уже передана другому процессу.');
       const user = this.user(owner);
       requireThat(user.revision === revision, 'STALE_CONTEXT', 'Данные уже изменились. Повтори запрос по актуальному списку.');
+      const before=response.changed>0&&!response.noUndo?this.mutationState(owner):null;
       mutate();
+      if(before){const token=this.journal(owner,before,new Date(Date.parse(turn.lease_until)-180000).toISOString());if(token)response={...response,undoToken:token,replyMarkup:response.replyMarkup??{inline_keyboard:[[{text:'↩ Отменить изменение',callback_data:`j|${token}`}]]}};}
       const nextHistory = [...user.history, { user: text, assistant: response.text }].slice(-5);
       this.db.prepare('UPDATE users SET focus_id=?,pending=?,history=?,revision=revision+1 WHERE id=?').run(Object.hasOwn(response, 'focusId') ? response.focusId : user.focus_id, Object.hasOwn(response, 'pending') ? response.pending ? JSON.stringify(response.pending) : null : user.pending ? JSON.stringify(user.pending) : null, JSON.stringify(nextHistory), owner);
       this.db.prepare('UPDATE turns SET response=? WHERE owner=? AND request_id=? AND lease=?').run(JSON.stringify(response), owner, requestId, lease);
       return response;
     });
+  }
+  mutationState(owner){return{items:this.items(owner,{includeClosed:true}),series:this.db.prepare('SELECT * FROM weekly_series WHERE owner=?').all(owner)};}
+  journal(owner,before,now){
+    const after=this.mutationState(owner),old=new Map(before.items.map(item=>[item.id,item])),series=new Map(before.series.map(item=>[item.id,item]));
+    const items=after.items.filter(item=>item.version!==old.get(item.id)?.version).map(item=>({before:old.get(item.id)??null,id:item.id,version:item.version,status:item.status}));
+    const changedSeries=after.series.filter(item=>item.active!==series.get(item.id)?.active).map(item=>({id:item.id,before:series.get(item.id)?.active??0,after:item.active}));
+    if(!items.length&&!changedSeries.length)return null;
+    const token=randomUUID().replaceAll('-','').slice(0,20),expires=new Date(Date.parse(now)+600000).toISOString();
+    this.db.prepare('INSERT INTO action_records VALUES (?,?,?,?,?,?)').run(token,owner,JSON.stringify({type:'undo',items,series:changedSeries}),now,expires,'ready');
+    this.db.prepare('DELETE FROM action_records WHERE owner=? AND expires_at<?').run(owner,now);return token;
+  }
+  undo(owner,token,now){
+    const row=this.db.prepare("SELECT * FROM action_records WHERE owner=? AND token=? AND state='ready' AND expires_at>?").get(owner,token,now);requireThat(row,'UNDO_EXPIRED','Это изменение уже отменено или прошло больше 10 минут.');const action=JSON.parse(row.data);requireThat(action.type==='undo','UNDO_EXPIRED','Это действие нельзя отменить.');
+    for(const entry of action.items){const item=this.item(owner,entry.id);requireThat(item&&item.version===entry.version&&item.status===entry.status,'UNDO_STALE','После этого дела уже менялись. Автоматическая отмена затронула бы новые правки — открой актуальный список.');}
+    for(const entry of action.series){const series=this.db.prepare('SELECT active FROM weekly_series WHERE owner=? AND id=?').get(owner,entry.id);requireThat(series?.active===entry.after,'UNDO_STALE','Серия уже изменилась. Открой актуальный список.');}
+    for(const entry of action.items){const item=entry.before;if(!item){this.changeItem(owner,entry.id,{status:'cancelled'},now);continue;}
+      this.db.prepare('UPDATE items SET title=?,day=?,at=?,duration=?,status=?,reminder_minutes=?,version=version+1 WHERE owner=? AND id=?').run(item.title,item.day,item.at,item.duration,item.status,item.reminder_minutes,owner,item.id);
+      this.db.prepare('INSERT INTO item_time_meta VALUES (?,?) ON CONFLICT(item_id) DO UPDATE SET approximate=excluded.approximate').run(item.id,item.approximate?1:0);this.replaceReminder(owner,item.id,now,item.reminder_minutes);
+    }
+    for(const entry of action.series)this.db.prepare('UPDATE weekly_series SET active=? WHERE owner=? AND id=?').run(entry.before,owner,entry.id);
+    this.db.prepare("UPDATE action_records SET state='undone' WHERE owner=? AND token=?").run(owner,token);return action.items.length;
   }
   putItem(item, now, reminderMinutes) {
     this.db.prepare('INSERT INTO items(id,owner,kind,title,day,at,duration,parent_id,reminder_minutes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(item.id, item.owner, item.kind, item.title, item.day ?? null, item.at ?? null, item.duration ?? null, item.parent_id ?? null, reminderMinutes, now);

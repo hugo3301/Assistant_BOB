@@ -5,6 +5,8 @@ import { calendarPreview, calendarImport } from './calendar.mjs';
 import {prepareCalendarUpload,prepareCalendarChoice,isCalendarAnswer} from './calendar-flow.mjs';
 import {BotUI} from './bot-ui.mjs';
 import {isNewRequest} from './policy.mjs';
+import {BulkActions} from './bulk-actions.mjs';
+import {quickAction} from './natural.mjs';
 
 export const HELP = `Я BOB, твой личный помощник. Напиши: «Добавь задачу сдать отчёт к 12 ноября» или «Встреча завтра в 15:00, напомни за час». Следом можно: «Перенеси её на завтра в 16:00».
 
@@ -26,12 +28,13 @@ export const HELP = `Я BOB, твой личный помощник. Напиш�
 
 Альфа: серии задаются командой, сложные даты могут требовать уточнения. Сообщения с делами обрабатывает Cloudflare Workers AI. Неотправленные уведомления видны в /status.`;
 export class Alpha {
-  constructor(store, assistant, { clock = () => new Date().toISOString() } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; this.ui=new BotUI(store,{clock,dispatch:(owner,text,options)=>this.handle(owner,text,{...options,skipUi:true})}); }
+  constructor(store, assistant, { clock = () => new Date().toISOString() } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; this.bulk=new BulkActions(store,{clock});this.ui=new BotUI(store,{clock,dispatch:(owner,text,options)=>this.handle(owner,text,{...options,skipUi:true})}); }
   preferences(owner) { return this.store.db.prepare('SELECT * FROM alpha_preferences WHERE owner=?').get(owner); }
   async handle(owner, text, { requestId=randomUUID(), documentText,caption='',requestText,callback,skipUi=false } = {}) {
     requireThat(this.assistant.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Нет доступа.');
     this.store.ensureUser(owner);
-    if(!skipUi&&documentText===undefined){const result=await this.ui.handle(owner,text,{requestId,callback,requestText});if(result)return result;}
+    if(!skipUi&&documentText===undefined){const result=await this.bulk.handle(owner,text,{requestId,callback,requestText});if(result)return result;}
+    if(!skipUi&&documentText===undefined&&(callback||!isCalendarAnswer(this.store,owner,text,this.clock()))){const result=await this.ui.handle(owner,text,{requestId,callback,requestText});if(result)return result;}
     const moving=this.store.user(owner).pending;
     if(!callback&&documentText===undefined&&moving?.kind==='ui_move'&&moving.expiresAt>this.clock()&&!isNewRequest(text)){
       const item=this.store.item(owner,moving.id);
@@ -43,7 +46,7 @@ export class Alpha {
     let name = documentText === undefined ? command?.[1]?.toLowerCase() : 'calendar_upload';
     const argument = command?.[2]?.trim() ?? '';
     if(!name&&isCalendarAnswer(this.store,owner,text,this.clock()))name='calendar_choice';
-    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)) return this.assistant.handle(owner, text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId,requestText });
+    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)){const quick=quickAction(text,this.store,owner);return this.assistant.handle(owner, quick?.text??text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId,requestText:requestText??text,...(quick?{applicationCalls:quick.calls}:{}) });}
     this.store.ensureUser(owner); const now = this.clock();
     const claim = this.store.beginTurn(owner, requestId, requestText??(documentText === undefined ? text : text + '\n' + caption + '\n' + documentText), now);
     if (claim.cached) return { ...claim.cached, replayed: true };
@@ -130,7 +133,7 @@ export class Alpha {
         file = { name: 'bob-export.json', text: JSON.stringify({version:1,exportedAt:now,user:{timezone:user.timezone,morningTime:user.morning_time,reminderMinutes:user.reminder_minutes},preferences,items:this.store.items(owner,{includeClosed:true}),series:this.store.db.prepare('SELECT * FROM weekly_series WHERE owner=?').all(owner),projects:this.store.db.prepare('SELECT name FROM projects WHERE owner=?').all(owner)},null,2) };
         result = 'Экспорт твоих данных BOB. Храни файл у себя; ключей доступа в нём нет.';
       }
-      return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',text:result,changed:0,modelCalls:0,...extra,...(file ? {file} : {})},mutate);
+      return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',text:result,changed:['done','remove','repeat'].includes(name)?1:0,modelCalls:0,...(['done','remove'].includes(name)?{pending:null}:{}),...extra,...(file ? {file} : {})},mutate);
     } catch (error) {
       if (!(error instanceof BobError)) throw error;
       return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'error',code:error.code,text:error.message,changed:0,modelCalls:0});

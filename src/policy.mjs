@@ -34,9 +34,11 @@ export const isNewRequest = text => /^\s*(?:\/|добав|создай|запи�
 
 export function validatePermission(name, text) {
   const source = normalize(text);
+  if(!['list_items','ask_user'].includes(name))requireThat(!/^\s*(?:как\s|если\s|что будет|можно ли)/u.test(source),'QUESTION_ONLY','Это вопрос о действии. Если хочешь изменить дела, напиши просьбу напрямую.');
   if (isReadRequest(text)) requireThat(name.startsWith('list_') || name === 'ask_user', 'READ_ONLY', 'Запрос на просмотр не разрешает изменять дела.');
   if (name === 'complete_task') requireThat(!/не\s+(?:сдал|сделал|готов|выполн|заверш|законч|отмеч|отмет)/u.test(source), 'COMPLETE_NOT_REQUESTED', 'В сообщении есть отрицание выполнения. Уточни, нужно ли закрыть дело.');
-  if (name === 'cancel_item') requireThat(!/не\s+(?:отмен|удал|убир)/u.test(source), 'CANCEL_NOT_REQUESTED', 'В сообщении есть запрет отмены. Дело оставлено.');
+  if (name === 'cancel_item') requireThat(!/не\s+(?:(?:надо|нужно|хочу)\s+)?(?:отмен|удал|убир)/u.test(source), 'CANCEL_NOT_REQUESTED', 'В сообщении есть запрет отмены. Дело оставлено.');
+  if(name==='cancel_item')requireThat(!/(?:^|\s)все(?:х)?(?:\s|[,.!?]|$)/u.test(source),'BULK_SCOPE','Чтобы убрать несколько дел, уточни: все дела, все задачи или все пары. Я покажу количество и спрошу подтверждение.');
   if (name === 'complete_task') requireThat(/сдал|сделал|готово|выполн|заверш|законч|отмет/iu.test(text), 'COMPLETE_NOT_REQUESTED', 'Ты не просил отмечать дело выполненным.');
   if (name === 'cancel_item') requireThat(/отмен|удал|не\s+нуж[а-я]*|убери/iu.test(text), 'CANCEL_NOT_REQUESTED', 'Ты не просил отменять дело.');
 }

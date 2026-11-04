@@ -16,6 +16,7 @@ export default {
     const path = new URL(request.url).pathname;
     if (path === '/health' && request.method === 'GET') return Response.json({service:'BOB',version:VERSION,status:'ok'},{headers:{'Cache-Control':'no-store'}});
     if (path === '/admin/status' && request.method === 'GET' && equalSecret(request.headers.get('Authorization'), `Bearer ${env.ADMIN_SECRET}`)) return object(env).fetch('https://internal/status');
+    if(path==='/admin/telegram'&&request.method==='POST'&&equalSecret(request.headers.get('Authorization'),`Bearer ${env.ADMIN_SECRET}`))return object(env).fetch(new Request('https://internal/configure',{method:'POST'}));
     if (path !== '/telegram/webhook' || request.method !== 'POST' || !equalSecret(request.headers.get('X-Telegram-Bot-Api-Secret-Token'),env.TELEGRAM_WEBHOOK_SECRET)) return new Response('Not found',{status:404});
     try {
       let raw = '', length = 0; const reader = request.body?.getReader(); if (!reader) return new Response('Invalid request',{status:400});
@@ -51,6 +52,10 @@ export class BobObject extends DurableObject {
       const update = await request.json(); if (!isOwnerUpdate(update,this.owner)) return new Response('ok');
       this.store.db.prepare('INSERT OR IGNORE INTO telegram_jobs(id,payload,next_at) VALUES (?,?,?)').run(update.update_id,JSON.stringify(update),now);
       await this.wake(); return new Response('ok');
+    }
+    if(path==='/configure'&&request.method==='POST'){
+      await this.telegram.call('setWebhook',{url:'https://assistant-bob-alpha.assistant-bob.workers.dev/telegram/webhook',secret_token:this.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message','callback_query'],max_connections:1,drop_pending_updates:false});
+      return Response.json({callbackUpdatesEnabled:true});
     }
     if (path === '/wake') {
       this.health('last_cron');

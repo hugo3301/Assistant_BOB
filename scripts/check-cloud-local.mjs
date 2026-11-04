@@ -50,6 +50,13 @@ try{
   await request('/telegram/webhook',cb,{'X-Telegram-Bot-Api-Secret-Token':secret});
   await until(()=>sent.some(message=>message.callback_query_id==='synthetic-click')&&sent.some(message=>message.message_id===6&&message.reply_markup?.inline_keyboard));
   assert.ok(sent.filter(message=>message.text).every(message=>! /\[(?:task|ical)-/.test(message.text)));
+  assert.equal((await request('/admin/telegram',{})).status,404);
+  assert.equal((await request('/admin/telegram',{}, {Authorization:`Bearer ${admin}`})).status,200);
+  assert.ok(sent.some(message=>message.allowed_updates?.includes('callback_query')&&message.drop_pending_updates===false));
+  await request('/telegram/webhook',update(8,'удали все мои дела'),{'X-Telegram-Bot-Api-Secret-Token':secret});
+  await until(()=>sent.some(message=>message.text?.includes('Дел: 2')));assert.equal((await status()).items,2);
+  await request('/telegram/webhook',update(9,'все'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(async()=>(await status()).items===0);
+  await request('/telegram/webhook',update(10,'верни как было'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(async()=>(await status()).items===2);
   console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

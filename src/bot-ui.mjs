@@ -2,6 +2,7 @@ import {randomBytes} from 'node:crypto';
 import {BobError,requireThat} from './errors.mjs';
 import {normalize} from './dates.mjs';
 import {selectItems,renderList,cardText,PAGE_SIZE,friendlyResponse} from './views.mjs';
+import {naturalView} from './natural.mjs';
 export const uiButton=(text,callback_data)=>({text,callback_data});
 const data=(token,action,value='')=>`u|${token}|${action}|${value}`;
 export class BotUI {
@@ -44,10 +45,11 @@ export class BotUI {
     }else throw new BobError('VIEW_EXPIRED','Открой меню и выбери действие ещё раз.');
    }else{
     const clean=normalize(text).replace(/[!?.,]+$/u,'');const scope={'/today':'today','сегодня':'today','/week':'week','неделя':'week','на неделю':'week','/ahead':'ahead','все дела':'ahead','/tasks':'all'}[clean];
-    if(scope)view=this.list(owner,{scope});else if(['/start','/help','помощь','меню','привет'].includes(clean))view=this.home(owner);else if(['/settings','настройки'].includes(clean))view=this.settings(owner);else if(['/projects','проекты'].includes(clean))view=this.projects(owner);else if(/^\/find\s+/iu.test(text))view=this.list(owner,{scope:'search',query:text.replace(/^\/find\s+/iu,'').trim()});else return null;
+    const natural=naturalView(text),number=/^(?:открой\s+)?(\d+)$/u.exec(clean),state=JSON.parse(this.store.db.prepare('SELECT data FROM ui_state WHERE owner=?').get(owner)?.data??'{}');
+    if(scope)view=this.list(owner,{scope});else if(['/start','/help','помощь','меню','привет'].includes(clean))view=this.home(owner);else if(['/settings','настройки'].includes(clean))view=this.settings(owner);else if(['/projects','проекты'].includes(clean))view=this.projects(owner);else if(/^\/find\s+/iu.test(text))view=this.list(owner,{scope:'search',query:text.replace(/^\/find\s+/iu,'').trim()});else if(natural)view=this.list(owner,natural);else if(number&&state.numbers?.[number[1]]&&!this.store.user(owner).pending){this.load(owner,state.token);view=this.card(owner,state.numbers[number[1]],{token:state.token,page:state.page});}else return null;
    }
    const claim=this.store.beginTurn(owner,requestId,source,this.clock());if(claim.cached)return{...claim.cached,replayed:true};const user=this.store.user(owner),{persist,...result}=view;
-   return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',changed:0,modelCalls:0,edit:Boolean(callback),...result},persist);
+   return this.store.finishTurn(owner,requestId,claim.lease,user.revision,text,{status:'ok',changed:0,modelCalls:0,pending:null,edit:Boolean(callback),...result},persist);
   }catch(error){if(!(error instanceof BobError))throw error;return{status:'error',code:error.code,text:error.message,changed:0,modelCalls:0};}
  }
 }
