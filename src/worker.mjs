@@ -18,6 +18,7 @@ import {calendarPublic} from './calendars/public.mjs';
 import {canonical as calendarCanonical} from './calendars/model.mjs';
 import {PlannerService} from './planner/service.mjs';
 import {plannerPublic} from './planner/public.mjs';
+import {refreshDelivery} from './delivery-view.mjs';
 export {ControlObject} from './control-worker.mjs';
 const VERSION = '0.2.0-alpha';
 function equalSecret(actual, expected) { if (typeof actual !== 'string' || typeof expected !== 'string' || expected.length < 24) return false; const a = new TextEncoder().encode(actual), b = new TextEncoder().encode(expected); return a.length === b.length && timingSafeEqual(a,b); }
@@ -146,7 +147,7 @@ export class BobObject extends DurableObject {
       else response = {text:'Пришли текст, голосовое до 2 минут или расписание .ics. Открыть меню: /start.'};
       if(response.changed>0){const calendarSoon=new Date(Date.now()+5000).toISOString();this.store.db.prepare("UPDATE calendar_connections SET next_at=CASE WHEN next_at<? THEN next_at ELSE ? END WHERE owner=? AND status='active'").run(calendarSoon,calendarSoon,this.owner);}
       response=presentReply(response,this.store,this.owner);
-      const chunks=splitRichMessage(response.text,response.entities),payloads = chunks.map((chunk,index) => ({...chunk,...(index===chunks.length-1&&response.replyMarkup?{replyMarkup:response.replyMarkup}:{}),...(callback&&response.edit&&chunks.length===1?{editMessageId:message.message_id}:{})})); if (response.file) payloads.push({file:response.file});
+      const chunks=splitRichMessage(response.text,response.entities),payloads = chunks.map((chunk,index) => ({...chunk,...(response.viewMeta&&chunks.length===1?{viewMeta:response.viewMeta}:{}),...(index===chunks.length-1&&response.replyMarkup?{replyMarkup:response.replyMarkup}:{}),...(callback&&response.edit&&chunks.length===1?{editMessageId:message.message_id}:{})})); if (response.file) payloads.push({file:response.file});
       this.store.transaction(() => {
         for (const [index,payload] of payloads.entries()) this.store.db.prepare('INSERT OR IGNORE INTO telegram_outbox(id,payload,next_at) VALUES (?,?,?)').run(`reply:${job.id}:${index}`,JSON.stringify(payload),new Date().toISOString());
         this.store.db.prepare("UPDATE telegram_jobs SET status='done',payload='{}',lease_until=NULL,last_error=NULL WHERE id=?").run(job.id);
@@ -172,7 +173,7 @@ export class BobObject extends DurableObject {
     for (const row of rows) {
       if(row.next_at>new Date().toISOString())break;
       try {
-        const payload = JSON.parse(row.payload);
+        let payload = JSON.parse(row.payload);const refreshed=refreshDelivery(this.alpha.ui,this.owner,payload,new Date().toISOString());if(refreshed.changed){this.store.transaction(()=>{refreshed.persist();this.store.db.prepare('UPDATE telegram_outbox SET payload=? WHERE id=?').run(JSON.stringify(refreshed.payload),row.id);});payload=refreshed.payload;}
         if (payload.file) await this.telegram.document(this.owner,payload.file); else if(payload.editMessageId)await this.telegram.edit(this.owner,payload.editMessageId,payload.text,payload.replyMarkup,payload.entities);else await this.telegram.send(this.owner,payload.text,payload.replyMarkup,payload.entities);
         this.store.db.prepare("UPDATE telegram_outbox SET status='sent',payload='{}',sent_at=?,attempts=attempts+1,last_error=NULL WHERE id=?").run(new Date().toISOString(),row.id);
         const job=/^reply:(\d+):/u.exec(row.id);if(job)this.store.db.prepare('UPDATE job_metrics SET reply_sent_at=COALESCE(reply_sent_at,?) WHERE id=?').run(new Date().toISOString(),Number(job[1]));

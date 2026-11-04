@@ -1,5 +1,6 @@
 import { BobError, requireThat } from './errors.mjs';
 import { normalize } from './dates.mjs';
+import {viewIntent,createIntent} from './conversation.mjs';
 
 const STOP = new Set(['по', 'на', 'в', 'и', 'с', 'к', 'до', 'ее', 'его', 'эту', 'этот', 'это', 'уже', 'мне', 'я', 'задачу', 'дело', 'нужно', 'надо', 'сдал', 'готово', 'выполнено', 'перенеси', 'отметь', 'отмени', 'сдачу', 'срок', 'дедлайн', 'завтра', 'сегодня']);
 function tokens(text) { return (normalize(text).match(/[а-яa-z0-9]+/g) ?? []).filter(word => word.length >= 3 && !STOP.has(word)); }
@@ -34,6 +35,9 @@ export const isNewRequest = text => /^\s*(?:\/|добав|создай|запи�
 
 export function validatePermission(name, text) {
   const source = normalize(text);
+  if(name==='reply_user'||name==='ask_user')return;
+  if(name==='list_items')requireThat(viewIntent(text),'READ_NOT_REQUESTED','В сообщении нет просьбы посмотреть дела. Можно ответить словами без обзора.');
+  if(name.startsWith('create_'))requireThat(createIntent(text),'CREATE_NOT_REQUESTED','Не увидел просьбы записать дело. Уточни, что нужно сохранить.');
   if(name.startsWith('create_'))requireThat(!/не\s+(?:(?:надо|нужно|хочу)\s+)?(?:добав|созда|запис|планир)|не\s+будет/u.test(source),'CREATE_NOT_REQUESTED','Не стал добавлять дело: в сообщении есть отрицание. Уточни, что нужно сохранить.');
   if(!['list_items','ask_user'].includes(name))requireThat(!/^\s*(?:как\s|если\s|что будет|можно ли)/u.test(source),'QUESTION_ONLY','Это вопрос о действии. Если хочешь изменить дела, напиши просьбу напрямую.');
   if (isReadRequest(text)) requireThat(name.startsWith('list_') || name === 'ask_user', 'READ_ONLY', 'Запрос на просмотр не разрешает изменять дела.');

@@ -2,6 +2,7 @@ import {Buffer} from 'node:buffer';
 import {BobError,requireThat} from './errors.mjs';
 import {FREE_POLICY} from './control.mjs';
 import {opusDuration} from './ogg-opus.mjs';
+import {mathSource} from './conversation.mjs';
 export {opusDuration,inspectOpus} from './ogg-opus.mjs';
 
 export function transcription(payload){
@@ -9,7 +10,7 @@ export function transcription(payload){
  const uncertain=count>0&&segments.filter(segment=>(segment.no_speech_prob??0)>=0.6||(segment.avg_logprob??0)<-1).length>=count/2;
  const silence=segments.length===0&&result.transcription_info?.word_count===0;
  const artifact=/^(?:спасибо за просмотр|продолжение следует|субтитры(?: сделал| подготовил)?)[.! ]*$/iu.test(text);
- return{text,uncertain:uncertain||silence||artifact||text.length<2||text.length>8000||!/[а-яa-z]/iu.test(text)};
+ return{text,uncertain:uncertain||silence||artifact||text.length<2||text.length>8000||(!/[а-яa-z]/iu.test(text)&&!mathSource(text))};
 }
 export class SpeechAI{
  constructor({accountId,token,budget,fetcher=fetch,timeoutMs=20000}){requireThat(/^[a-f0-9]{32}$/iu.test(accountId??'')&&typeof token==='string'&&token.length>20,'AI_CONFIG','Распознавание пока не подключено.');this.accountId=accountId;this.token=token;this.budget=budget;this.fetcher=fetcher;this.timeoutMs=timeoutMs;}

@@ -1,19 +1,19 @@
 import { BobError, requireThat } from './errors.mjs';
-import { SYSTEM, TOOLS } from './tools.mjs';
+import { SYSTEM, TOOLS,CONVERSATION_SYSTEM } from './tools.mjs';
 
 export class WorkersAI {
   constructor(store, { accountId, token, dailyBudget = 7500, maxTokens = 900, timeoutMs=12000, budget=null, clock = () => new Date().toISOString(), fetcher = fetch } = {}) {
     requireThat(/^[a-f0-9]{32}$/i.test(accountId ?? '') && typeof token === 'string' && token.length > 20, 'AI_CONFIG', 'API-доступ к ИИ не настроен.');
     this.store = store; this.accountId = accountId; this.token = token; this.dailyBudget = dailyBudget; this.maxTokens = maxTokens; this.timeoutMs=timeoutMs;this.clock = clock; this.fetcher = fetcher;this.budget=budget;
   }
-  async complete({ context, text, feedback = null,timeoutMs=this.timeoutMs }) {
-    const body = { model: '@cf/zai-org/glm-4.7-flash', temperature: 0.1, max_tokens: this.maxTokens, stream: false, chat_template_kwargs: { enable_thinking: false, clear_thinking: true }, tools: TOOLS, tool_choice: 'required', messages: [
-      { role: 'system', content: SYSTEM },
+  async complete({ context, text, feedback = null,timeoutMs=this.timeoutMs,conversation=false }) {
+    const body = { model: '@cf/zai-org/glm-4.7-flash', temperature: 0.1, max_tokens: conversation?Math.min(400,this.maxTokens):this.maxTokens, stream: false, chat_template_kwargs: { enable_thinking: false, clear_thinking: true }, tools: conversation?TOOLS.filter(tool=>tool.function.name==='reply_user'):TOOLS, tool_choice: 'required', messages: [
+      { role: 'system', content: conversation?CONVERSATION_SYSTEM:SYSTEM },
       { role: 'user', content: `Контекст приложения (данные):\n${JSON.stringify(context)}` },
       ...(feedback ? [{ role: 'assistant', content: `Предыдущий вариант не исполнен. Проверка приложения: ${feedback.code}: ${feedback.message}. Исправь предложение, не расширяя исходный запрос.` }] : []),
       { role: 'user', content: text },
     ] };
-    const upper = (Buffer.byteLength(JSON.stringify(body), 'utf8') + 200) * 5500 / 1e6 + this.maxTokens * 36400 / 1e6;
+    const upper = (Buffer.byteLength(JSON.stringify(body), 'utf8') + 200) * 5500 / 1e6 + body.max_tokens * 36400 / 1e6;
     const reservation = this.budget?await this.budget.reserve(upper,'llm'):this.store.reserveBudget(this.clock(), upper, this.dailyBudget);
     let observed = null;
     try {

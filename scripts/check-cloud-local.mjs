@@ -2,6 +2,7 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
 import {runInNewContext} from 'node:vm';
+import {dayAt,addDays} from '../src/dates.mjs';
 import { resolve } from 'node:path';
 import {ogg} from '../tests/ogg-fixture.mjs';
 import {APP_ORIGIN} from '../src/calendars/pages.mjs';
@@ -44,7 +45,7 @@ const configuration=convertV4MiniflareOptions({unsafeInspectDurableObjects:true,
     const body=await request.json();if(failNextSend&&url.pathname.endsWith('/sendMessage')){failNextSend=false;return Response.json({ok:false,parameters:{retry_after:1}},{status:429});}sent.push(body);return Response.json({ok:true,result:{message_id:sent.length}});
   }
   if(url.hostname==='api.cloudflare.com'&&url.pathname.endsWith('/whisper-large-v3-turbo')){asrCalls++;return Response.json({success:true,result:{text:asrText,segments:[{no_speech_prob:0.01,avg_logprob:-0.2}]},usage:{neurons:8}});}
-  if(url.hostname==='api.cloudflare.com')return Response.json({choices:[{finish_reason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'one',function:{name:'create_task',arguments:JSON.stringify({title:'Проверка сервера',due_text:'12 ноября'})}}]}}],usage:{neurons:1}});
+  if(url.hostname==='api.cloudflare.com'){const body=await request.json(),chat=body.tools?.length===1&&body.tools[0].function?.name==='reply_user';return Response.json({choices:[{finish_reason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'one',function:{name:chat?'reply_user':'create_task',arguments:JSON.stringify(chat?{answer:'Рекурсия — вызов функции из неё самой.'}:{title:'Проверка сервера',due_text:'12 ноября'})}}]}}],usage:{neurons:1}});}
   throw Error('Unexpected external request in cloud test');
 }});
 let mf=new Miniflare(configuration);
@@ -158,6 +159,14 @@ try{
   const beforeDeep=sent.length;
   await request('/telegram/webhook',update(650,'/start '+deepPayload),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeDeep).some(message=>message.text?.includes(ownPlan.items[0].title)));assert.equal((await status()).items,2);
   await request('/telegram/webhook',update(651,'/start '+deepPayload,200),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeDeep).some(message=>String(message.chat_id)==='200'&&message.text?.includes('устарела')));
-  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,plannerSignedIsolation:true,plannerCardDeepLink:true,bundledBrowserGeometry:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
+  const beforeChat=sent.length,beforeChatAI=calls.filter(host=>host==='api.cloudflare.com').length;
+  await request('/telegram/webhook',update(660,'2+2'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeChat).some(message=>message.text==='2+2 = 4'));assert.equal(calls.filter(host=>host==='api.cloudflare.com').length,beforeChatAI);
+  await request('/telegram/webhook',update(660,'2+2'),{'X-Telegram-Bot-Api-Secret-Token':secret});
+  await request('/telegram/webhook',update(661,'Что такое рекурсия?'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeChat).some(message=>message.text?.includes('Рекурсия')));assert.equal(sent.slice(beforeChat).filter(message=>message.text==='2+2 = 4').length,1);assert.equal((await status()).items,2);
+  const delayedBefore=sent.length,deliveryDb=await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:'owner:123:v1'}),deliveryDay=dayAt(new Date().toISOString(),'Asia/Tomsk');
+  const delayedPayload={text:'Старый снимок периода',entities:[],viewMeta:{filter:{scope:'today'},anchorDay:addDays(deliveryDay,-1),timezone:'Asia/Tomsk'}};
+  await deliveryDb.exec("INSERT INTO telegram_outbox(id,payload,next_at) VALUES ('delayed-period','"+JSON.stringify(delayedPayload).replaceAll("'","''")+"','2000-01-01T00:00:00.000Z')");
+  await request('/telegram/webhook',update(662,'/status'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(delayedBefore).some(message=>message.text?.includes('Дата плана')));assert.ok(sent.slice(delayedBefore).every(message=>!message.text?.includes('Старый снимок периода')));assert.equal((await deliveryDb.exec("SELECT status FROM telegram_outbox WHERE id='delayed-period'"))[0].status,'sent');
+  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,plannerSignedIsolation:true,plannerCardDeepLink:true,bundledBrowserGeometry:true,arithmeticWithoutAI:true,readOnlyConversation:true,delayedPeriodRefreshed:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

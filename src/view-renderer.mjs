@@ -7,25 +7,30 @@ export function itemType(item){if(/\(ЛБ\)/iu.test(item.title))return '🧪 Л�
 export function localClock(at,zone){return new Intl.DateTimeFormat('ru',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(at));}
 export function dateHeading(day,today){if(!day)return 'Без срока';const label=new Intl.DateTimeFormat('ru',{timeZone:'UTC',weekday:'short',day:'numeric',month:'long',...(day.slice(0,4)!==today.slice(0,4)?{year:'numeric'}:{})}).format(new Date(day+'T12:00:00Z'));return(day===today?'Сегодня · ':day===addDays(today,1)?'Завтра · ':'')+label;}
 export const localItem=(item,timezone)=>item.at?{...item,day:dayAt(item.at,timezone)}:item;
+function eventLastDay(item,timezone){if(item.at&&item.duration)return dayAt(new Date(Date.parse(item.at)+item.duration*60000-1).toISOString(),timezone);if(item.all_day&&item.end_day){const span=item.source_day?Math.max(1,Math.round((Date.parse(item.end_day)-Date.parse(item.source_day))/86400000)):null;return span?addDays(item.day,span-1):addDays(item.end_day,-1);}return item.day;}
 export function selectItems(store,owner,filter,now){
  const scope=typeof filter==='string'?filter:filter.scope??'all',options=typeof filter==='object'?filter:{};
  const timezone=store.user(owner).timezone,today=dayAt(now,timezone),end=scope==='today'?today:scope==='tomorrow'?addDays(today,1):scope==='week'?addDays(today,6):'9999-12-31';
- const result=store.items(owner).map(item=>localItem(item,timezone)).filter(item=>{if(options.kind==='tasks'&&item.kind!=='task')return false;if(options.kind==='classes'&&!(item.kind!=='task'&&(item.area==='Учёба'||/пара|лекци|занятие/iu.test(item.title))))return false;if(options.project&&item.project!==options.project)return false;if(options.area&&item.area!==options.area)return false;if(options.query&&!normalize(item.title).includes(normalize(options.query)))return false;if(options.date)return item.day===options.date;if(scope==='all'||scope==='ahead'||scope==='project'||scope==='search')return true;if(!item.day)return false;return scope==='tomorrow'?item.day===end:item.day<=end;});
+ const result=store.items(owner).map(item=>localItem(item,timezone)).filter(item=>{if(options.kind==='tasks'&&item.kind!=='task')return false;if(options.kind==='classes'&&!(item.kind!=='task'&&(item.area==='Учёба'||/пара|лекци|занятие/iu.test(item.title))))return false;if(options.project&&item.project!==options.project)return false;if(options.area&&item.area!==options.area)return false;if(options.query&&!normalize(item.title).includes(normalize(options.query)))return false;if(options.date)return item.day===options.date||(item.kind!=='task'&&item.day<options.date&&eventLastDay(item,timezone)>=options.date);if(scope==='all'||scope==='ahead'||scope==='project'||scope==='search')return true;if(!item.day)return false;if(item.kind==='task')return scope==='tomorrow'?item.day===end:item.day<=end;const start=scope==='tomorrow'?end:today;return item.day<=end&&eventLastDay(item,timezone)>=start;});
  return scope==='ahead'?result.sort((a,b)=>Number(b.kind==='task')-Number(a.kind==='task')):result;
 }
 export function renderList(items,{scope='all',now,timezone,page=0,pageSize=PAGE_SIZE}={}){
  const today=dayAt(now,timezone),pages=Math.max(1,Math.ceil(items.length/pageSize));page=Math.max(0,Math.min(page,pages-1));
  const labels={today:'📅 Сегодня',tomorrow:'📅 Завтра',week:'📆 Ближайшие 7 дней',ahead:'🔭 Общая картина',all:'📝 Все дела',search:'🔎 Найденные дела',project:'📂 Проект'};
  const visible=items.slice(page*pageSize,(page+1)*pageSize),lines=[labels[scope]??labels.all,zoneLabel(timezone,now)];let previousDay;
+ if(['today','tomorrow','week'].includes(scope))lines.push('Дата плана · '+dateHeading(scope==='tomorrow'?addDays(today,1):today,today));
  if(scope==='ahead')lines.push('',`Всего ${items.length} · задач ${items.filter(item=>item.kind==='task').length} · без срока ${items.filter(item=>!item.day).length}`,'Сначала задачи и сроки, затем события.');
  const conflicts=new Set(),timed=items.filter(item=>item.kind!=='task'&&item.at).sort((a,b)=>a.at.localeCompare(b.at));let longest=null,end=0;
  for(const item of timed){const start=Date.parse(item.at),finish=start+(item.duration??1)*60000;if(start<end){conflicts.add(item.id);conflicts.add(longest.id);}if(finish>end){longest=item;end=finish;}}
  for(const[index,item]of visible.entries()){
-  if(item.day!==previousDay){lines.push('',dateHeading(item.day,today));previousDay=item.day;}
+  const overdueDay=item.kind==='task'&&item.day&&item.day<today,periodStart=scope==='tomorrow'?addDays(today,1):today,groupDay=['today','tomorrow','week'].includes(scope)&&item.kind!=='task'&&item.day<periodStart?periodStart:item.day,groupKey=(overdueDay?'overdue:':'')+groupDay;
+  if(groupKey!==previousDay){lines.push('',(overdueDay?'❗ Просроченные задачи · ':'')+dateHeading(groupDay,today));previousDay=groupKey;}
   let time=item.kind==='task'?(item.day?'Срок':'Задача'):item.at?localClock(item.at,timezone):item.all_day?'Весь день':'Время не указано';
   if(item.at){time=(item.kind==='task'?'До ':'')+localClock(item.at,timezone);if(item.duration&&item.kind!=='task')time+='–'+localClock(new Date(Date.parse(item.at)+item.duration*60000).toISOString(),timezone);if(item.approximate)time='Около '+time;}
   if(item.kind==='task'&&item.day&&(item.at?item.at<now:item.day<today))time='❗ Просрочено · '+time;
   else if(item.kind!=='task'&&item.at&&item.at<=now&&item.duration&&Date.parse(item.at)+item.duration*60000>Date.parse(now))time='Сейчас · '+time;
+  else if(item.kind!=='task'&&item.at&&item.duration&&Date.parse(item.at)+item.duration*60000<=Date.parse(now))time='Уже прошло · '+time;
+  if(item.kind!=='task'&&item.day<groupDay)time+=' · началось '+dateHeading(item.day,today);
   const fullType=itemType(item).replace(/^\S+\s/u,''),type=({'Лабораторная':'ЛБ','Лекция':'ЛК','Практика':'ПР'}[fullType]??fullType);lines.push('',`${page*pageSize+index+1}. ${displayTitle(item.title)}`,`${time}${type!=='Задача'&&type!=='Событие'?' · '+type:''}${conflicts.has(item.id)?' · ⚠':''}`);if(item.project)lines.push('↳ '+item.project);
  }
  if(!items.length)lines.push('',scope==='today'?'На сегодня дел нет.':scope==='tomorrow'?'На завтра дел нет.':'Здесь пока нет дел.');
