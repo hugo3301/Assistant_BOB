@@ -1,0 +1,298 @@
+{
+  "date": "2026-11-05",
+  "environment": "local HTTP to existing Cloudflare Free",
+  "synthetic": true,
+  "productionModelChanged": false,
+  "totalMeasuredNeurons": 171.48788051605226,
+  "casesPerModel": 6,
+  "summary": {
+    "glm": {
+      "passed": 4,
+      "guardBlocked": 1,
+      "contractErrors": 0,
+      "totalNeurons": 74.55,
+      "medianMs": 1176,
+      "maxMs": 2909
+    },
+    "granite": {
+      "passed": 2,
+      "guardBlocked": 3,
+      "contractErrors": 0,
+      "totalNeurons": 26.047204971313477,
+      "medianMs": 2270,
+      "maxMs": 4337
+    },
+    "qwen": {
+      "passed": 0,
+      "guardBlocked": 0,
+      "contractErrors": 6,
+      "totalNeurons": 70.89067554473877,
+      "medianMs": 570,
+      "maxMs": 966
+    }
+  },
+  "entries": [
+    {
+      "model": "glm",
+      "case": "ordinary-evening",
+      "expected": "create_event",
+      "passed": true,
+      "blocked": false,
+      "ms": 1463,
+      "neurons": 12.7564,
+      "http": 200,
+      "tokens": 2089,
+      "tools": [
+        "create_event"
+      ],
+      "accounted": 12.7564
+    },
+    {
+      "model": "glm",
+      "case": "quoted-task",
+      "expected": "create_task",
+      "passed": true,
+      "blocked": false,
+      "ms": 980,
+      "neurons": 12.4542,
+      "http": 200,
+      "tokens": 2079,
+      "tools": [
+        "create_task"
+      ],
+      "accounted": 12.4542
+    },
+    {
+      "model": "glm",
+      "case": "ambiguous-target",
+      "expected": "ask_user",
+      "passed": true,
+      "blocked": false,
+      "ms": 1372,
+      "neurons": 12.687,
+      "http": 200,
+      "tokens": 2082,
+      "tools": [
+        "ask_user"
+      ],
+      "accounted": 12.687
+    },
+    {
+      "model": "glm",
+      "case": "work-not-deadline",
+      "expected": "plan_work",
+      "passed": false,
+      "blocked": true,
+      "ms": 975,
+      "neurons": 12.8313,
+      "http": 200,
+      "tokens": 2097,
+      "tools": [
+        "plan_work"
+      ],
+      "guard": "DURATION_MISSING",
+      "accounted": 12.8313
+    },
+    {
+      "model": "glm",
+      "case": "focused-completion",
+      "expected": "complete_task",
+      "passed": true,
+      "blocked": false,
+      "ms": 2909,
+      "neurons": 11.937,
+      "http": 200,
+      "tokens": 2058,
+      "tools": [
+        "complete_task"
+      ],
+      "accounted": 11.937
+    },
+    {
+      "model": "glm",
+      "case": "unrelated",
+      "expected": "ask_user",
+      "passed": false,
+      "blocked": false,
+      "ms": 864,
+      "neurons": 11.884099999999998,
+      "http": 200,
+      "tokens": 2054,
+      "tools": [
+        "list_items"
+      ],
+      "accounted": 11.884099999999998
+    },
+    {
+      "model": "granite",
+      "case": "ordinary-evening",
+      "expected": "create_event",
+      "passed": true,
+      "blocked": false,
+      "ms": 4254,
+      "neurons": 4.592874526977539,
+      "http": 200,
+      "tokens": 2655,
+      "tools": [
+        "create_event"
+      ],
+      "accounted": 4.592874526977539
+    },
+    {
+      "model": "granite",
+      "case": "quoted-task",
+      "expected": "create_task",
+      "passed": true,
+      "blocked": false,
+      "ms": 2341,
+      "neurons": 4.363224506378174,
+      "http": 200,
+      "tokens": 2629,
+      "tools": [
+        "create_task"
+      ],
+      "accounted": 4.363224506378174
+    },
+    {
+      "model": "granite",
+      "case": "ambiguous-target",
+      "expected": "ask_user",
+      "passed": false,
+      "blocked": true,
+      "ms": 4337,
+      "neurons": 4.3071746826171875,
+      "http": 200,
+      "tokens": 2615,
+      "tools": [
+        "move_event"
+      ],
+      "guard": "TARGET_AMBIGUOUS",
+      "accounted": 4.3071746826171875
+    },
+    {
+      "model": "granite",
+      "case": "work-not-deadline",
+      "expected": "plan_work",
+      "passed": false,
+      "blocked": true,
+      "ms": 2199,
+      "neurons": 4.429432392120361,
+      "http": 200,
+      "tokens": 2644,
+      "tools": [
+        "plan_work"
+      ],
+      "guard": "DURATION_MISSING",
+      "accounted": 4.429432392120361
+    },
+    {
+      "model": "granite",
+      "case": "focused-completion",
+      "expected": "complete_task",
+      "passed": false,
+      "blocked": true,
+      "ms": 1371,
+      "neurons": 4.174482822418213,
+      "http": 200,
+      "tokens": 2596,
+      "tools": [
+        "cancel_item"
+      ],
+      "guard": "CANCEL_NOT_REQUESTED",
+      "accounted": 4.174482822418213
+    },
+    {
+      "model": "granite",
+      "case": "unrelated",
+      "expected": "ask_user",
+      "passed": false,
+      "blocked": false,
+      "ms": 1406,
+      "neurons": 4.180016040802002,
+      "http": 200,
+      "tokens": 2594,
+      "tools": [
+        "create_task"
+      ],
+      "accounted": 4.180016040802002
+    },
+    {
+      "model": "qwen",
+      "case": "ordinary-evening",
+      "expected": "create_event",
+      "passed": false,
+      "blocked": false,
+      "ms": 966,
+      "neurons": 12.0772705078125,
+      "http": 200,
+      "tokens": 2360,
+      "code": "TOOL_COUNT",
+      "accounted": 12.0772705078125
+    },
+    {
+      "model": "qwen",
+      "case": "quoted-task",
+      "expected": "create_task",
+      "passed": false,
+      "blocked": false,
+      "ms": 591,
+      "neurons": 11.723549842834473,
+      "http": 200,
+      "tokens": 2345,
+      "code": "TOOL_COUNT",
+      "accounted": 11.723549842834473
+    },
+    {
+      "model": "qwen",
+      "case": "ambiguous-target",
+      "expected": "ask_user",
+      "passed": false,
+      "blocked": false,
+      "ms": 545,
+      "neurons": 11.609003067016602,
+      "http": 200,
+      "tokens": 2337,
+      "code": "TOOL_COUNT",
+      "accounted": 11.609003067016602
+    },
+    {
+      "model": "qwen",
+      "case": "work-not-deadline",
+      "expected": "plan_work",
+      "passed": false,
+      "blocked": false,
+      "ms": 508,
+      "neurons": 12.018218994140625,
+      "http": 200,
+      "tokens": 2364,
+      "code": "TOOL_COUNT",
+      "accounted": 12.018218994140625
+    },
+    {
+      "model": "qwen",
+      "case": "focused-completion",
+      "expected": "complete_task",
+      "passed": false,
+      "blocked": false,
+      "ms": 549,
+      "neurons": 11.43350601196289,
+      "http": 200,
+      "tokens": 2327,
+      "code": "TOOL_COUNT",
+      "accounted": 11.43350601196289
+    },
+    {
+      "model": "qwen",
+      "case": "unrelated",
+      "expected": "ask_user",
+      "passed": false,
+      "blocked": false,
+      "ms": 896,
+      "neurons": 12.02912712097168,
+      "http": 200,
+      "tokens": 2344,
+      "code": "TOOL_COUNT",
+      "accounted": 12.02912712097168
+    }
+  ]
+}
