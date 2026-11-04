@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BobError, requireThat } from './errors.mjs';
-import { resolveDate, verifyDatePhrase, normalize, formatDate } from './dates.mjs';
+import { resolveDate, verifyDatePhrase, normalize, formatDate, cleanUserText } from './dates.mjs';
 import { selectTarget, allowDeadlineChange, isNewRequest, validatePermission } from './policy.mjs';
 import { decodeCalls } from './tools.mjs';
 import { overview } from './views.mjs';
@@ -70,7 +70,7 @@ export class Assistant {
             const explicitClock = /^\s+(в\s+\d{1,2}(?::\d{2})?(?:\s+(?:по\s+москве|мск))?)(?=\s|[,.!?]|$)/u.exec(rest);
             if (explicitClock) phrase = `${phrase} ${explicitClock[1]}`;
           }
-          date = resolveDate(phrase, { now: referenceAt, timezone: user.timezone, requireTime: field === 'when_text' });
+          date = resolveDate(phrase, { now: referenceAt, timezone: user.timezone, requireTime: field === 'when_text', contextText: text, defaultToday: field === 'when_text' });
           requireThat(!date.at || date.at > this.clock(), 'DATE_IN_PAST', 'Это время уже прошло. Укажи новую дату.');
         } catch (error) { error.details = { ...error.details, index, field }; throw error; }
       }
@@ -93,8 +93,8 @@ export class Assistant {
       if (name.startsWith('create_') || name === 'plan_work') {
         const kind = name === 'create_task' ? 'task' : name === 'plan_work' ? 'work' : 'event';
         const title = name === 'plan_work' ? `Работа: ${target.title}` : args.title.trim();
-        prepared.push({ kind: 'create', item: { id: `${kind}-${randomUUID().slice(0, 8)}`, owner, kind, title, day: date?.day ?? null, at: date?.at ?? null, duration: kind === 'task' ? null : duration, parent_id: name === 'plan_work' ? target.id : null }, reminderMinutes: minutes });
-      } else if (['change_deadline', 'move_event'].includes(name)) prepared.push({ kind: 'change', target, changes: { day: date.day, at: date.at, ...(name === 'move_event' && duration !== null ? { duration } : {}) }, reminderMinutes: minutes });
+        prepared.push({ kind: 'create', item: { id: `${kind}-${randomUUID().slice(0, 8)}`, owner, kind, title, day: date?.day ?? null, at: date?.at ?? null, approximate:date?.approximate??false, duration: kind === 'task' ? null : duration, parent_id: name === 'plan_work' ? target.id : null }, reminderMinutes: minutes });
+      } else if (['change_deadline', 'move_event'].includes(name)) prepared.push({ kind: 'change', target, changes: { day: date.day, at: date.at, approximate:date.approximate, ...(name === 'move_event' && duration !== null ? { duration } : {}) }, reminderMinutes: minutes });
       else if (['complete_task', 'cancel_item'].includes(name)) prepared.push({ kind: 'change', target, changes: { status: name === 'complete_task' ? 'completed' : 'cancelled' } });
     }
     return prepared;
@@ -105,6 +105,7 @@ export class Assistant {
     this.store.ensureUser(owner);
     const claim = this.store.beginTurn(owner, requestId, text, this.clock());
     if (claim.cached) return { ...claim.cached, replayed: true };
+    text = cleanUserText(text);
     let user = this.store.user(owner), modelCalls = 0;
     const commit = (response, mutate) => this.store.finishTurn(owner, requestId, claim.lease, user.revision, text, { modelCalls, ...response }, mutate);
     try {
@@ -114,7 +115,7 @@ export class Assistant {
       if (search) {
         const query = normalize(search[1]);
         const found = this.store.items(owner).filter(item => normalize(item.title).includes(query) || normalize(item.id).includes(query));
-        return commit({ status: 'ok', text: found.length ? found.map(item => `${item.title} — ${item.day ? formatDate(item.day, item.at, user.timezone) : 'без срока'} [${item.id}]`).join('\n') : 'Подходящих открытых дел нет.', changed: 0 });
+        return commit({ status: 'ok', text: found.length ? found.map(item => `${item.title} — ${item.day ? formatDate(item.day, item.at, user.timezone,item.approximate) : 'без срока'} [${item.id}]`).join('\n') : 'Подходящих открытых дел нет.', changed: 0 });
       }
       if (/^\/(?:cancel|отмена)$/i.test(text.trim())) return commit({ status: 'ok', text: 'Уточнение отменено. Дела не изменены.', changed: 0, pending: null });
       let pending = user.pending;
@@ -125,7 +126,7 @@ export class Assistant {
       if (pending?.kind === 'date') {
         calls = structuredClone(pending.calls);
         const args = calls[pending.index].args;
-        args[pending.field] = pending.append ? `${args[pending.field]} ${text}` : text;
+        args[pending.field] = text;
       } else if (pending?.kind === 'target') {
         const number = /^\s*(\d+)\s*$/.exec(text);
         const choices = pending.candidates.filter(candidate => this.store.item(owner, candidate.id)?.status === 'open');
@@ -158,7 +159,7 @@ export class Assistant {
           const prepared = this.prepare(owner, calls, sourceText, user, referenceAt);
           if (prepared[0]?.kind === 'question') return commit({ status: 'clarify', text: prepared[0].question, changed: 0, usage, pending: { kind: 'question', originalText: effectiveText, referenceAt, expiresAt: new Date(Date.parse(this.clock()) + 86400000).toISOString() } });
           const changes = prepared.filter(action => action.kind !== 'read');
-          const lines = prepared.map(action => action.kind === 'read' ? overview(this.store, owner, action.scope, this.clock()) : action.kind === 'create' ? `Добавил: ${action.item.title}${action.item.day ? ` — ${formatDate(action.item.day, action.item.at, user.timezone)}` : ' — без срока'} [${action.item.id}]` : action.changes.status ? `${action.changes.status === 'completed' ? 'Выполнено' : 'Отменено'}: ${action.target.title}` : `Перенёс: ${action.target.title} — ${formatDate(action.changes.day, action.changes.at, user.timezone)}`);
+          const lines = prepared.map(action => action.kind === 'read' ? overview(this.store, owner, action.scope, this.clock()) : action.kind === 'create' ? `Добавил: ${action.item.title}${action.item.day ? ` — ${formatDate(action.item.day, action.item.at, user.timezone,action.item.approximate)}` : ' — без срока'} [${action.item.id}]` : action.changes.status ? `${action.changes.status === 'completed' ? 'Выполнено' : 'Отменено'}: ${action.target.title}` : `Перенёс: ${action.target.title} — ${formatDate(action.changes.day, action.changes.at, user.timezone,action.changes.approximate)}`);
           const focusId = changes.length === 1 ? changes[0].kind === 'create' ? changes[0].item.id : changes[0].target.id : user.focus_id;
           return commit({ status: 'ok', text: lines.join('\n'), changed: changes.length, focusId, pending: null, usage }, () => {
             for (const action of changes) {

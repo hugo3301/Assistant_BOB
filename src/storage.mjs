@@ -17,6 +17,7 @@ export class CoreStore {
       CREATE TABLE IF NOT EXISTS projects(owner TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(owner,name));
       CREATE TABLE IF NOT EXISTS alpha_preferences(owner TEXT PRIMARY KEY, project TEXT, area TEXT NOT NULL DEFAULT 'Личное', diet TEXT);
       CREATE TABLE IF NOT EXISTS item_context(item_id TEXT PRIMARY KEY, project TEXT, area TEXT NOT NULL, series_id TEXT, source_key TEXT);
+      CREATE TABLE IF NOT EXISTS item_time_meta(item_id TEXT PRIMARY KEY,approximate INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS weekly_series(id TEXT PRIMARY KEY, owner TEXT NOT NULL, title TEXT NOT NULL, days TEXT NOT NULL, time TEXT NOT NULL, duration INTEGER NOT NULL, timezone TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS calendar_previews(owner TEXT PRIMARY KEY, body TEXT NOT NULL, selected TEXT, created_at TEXT NOT NULL);
 `);
@@ -49,9 +50,9 @@ export class CoreStore {
     return this.user(owner);
   }
   items(owner, { includeClosed = false } = {}) {
-    return this.db.prepare(`SELECT items.*,item_context.project,item_context.area,item_context.series_id FROM items LEFT JOIN item_context ON item_context.item_id=items.id WHERE items.owner=? ${includeClosed ? '' : "AND items.status='open'"} ORDER BY COALESCE(at,day,'9999'),created_at,id`).all(owner);
+    return this.db.prepare(`SELECT items.*,item_context.project,COALESCE(item_context.area,'Личное') AS area,item_context.series_id,COALESCE(item_time_meta.approximate,0) AS approximate FROM items LEFT JOIN item_context ON item_context.item_id=items.id LEFT JOIN item_time_meta ON item_time_meta.item_id=items.id WHERE items.owner=? ${includeClosed ? '' : "AND items.status='open'"} ORDER BY COALESCE(at,day,'9999'),created_at,id`).all(owner);
   }
-  item(owner, id) { return this.db.prepare('SELECT items.*,item_context.project,item_context.area,item_context.series_id FROM items LEFT JOIN item_context ON item_context.item_id=items.id WHERE items.owner=? AND items.id=?').get(owner, id); }
+  item(owner, id) { return this.db.prepare("SELECT items.*,item_context.project,COALESCE(item_context.area,'Личное') AS area,item_context.series_id,COALESCE(item_time_meta.approximate,0) AS approximate FROM items LEFT JOIN item_context ON item_context.item_id=items.id LEFT JOIN item_time_meta ON item_time_meta.item_id=items.id WHERE items.owner=? AND items.id=?").get(owner, id); }
   beginTurn(owner, requestId, text, now) {
     requireThat(typeof requestId === 'string' && requestId.length <= 150, 'INVALID_REQUEST_ID', 'Некорректный идентификатор сообщения.');
     const hash = createHash('sha256').update(text).digest('hex');
@@ -84,6 +85,7 @@ export class CoreStore {
     this.db.prepare('INSERT INTO items(id,owner,kind,title,day,at,duration,parent_id,reminder_minutes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(item.id, item.owner, item.kind, item.title, item.day ?? null, item.at ?? null, item.duration ?? null, item.parent_id ?? null, reminderMinutes, now);
     const preferences = this.db.prepare('SELECT project,area FROM alpha_preferences WHERE owner=?').get(item.owner);
     this.db.prepare('INSERT INTO item_context(item_id,project,area,series_id,source_key) VALUES (?,?,?,?,?)').run(item.id, item.project === undefined ? preferences?.project ?? null : item.project, item.area ?? preferences?.area ?? 'Личное', item.series_id ?? null, item.source_key ?? null);
+    this.db.prepare('INSERT INTO item_time_meta(item_id,approximate) VALUES (?,?)').run(item.id,item.approximate?1:0);
     this.replaceReminder(item.owner, item.id, now, reminderMinutes);
   }
   changeItem(owner, id, changes, now, reminderMinutes) {
@@ -91,6 +93,7 @@ export class CoreStore {
     requireThat(item && item.status === 'open', 'ITEM_GONE', 'Дело уже закрыто или отсутствует.');
     const next = { ...item, ...changes, reminder_minutes: reminderMinutes === undefined ? item.reminder_minutes : reminderMinutes };
     this.db.prepare('UPDATE items SET title=?,day=?,at=?,duration=?,status=?,reminder_minutes=?,version=version+1 WHERE owner=? AND id=?').run(next.title, next.day, next.at, next.duration, next.status, next.reminder_minutes, owner, id);
+    if(Object.hasOwn(changes,'approximate'))this.db.prepare('INSERT INTO item_time_meta VALUES (?,?) ON CONFLICT(item_id) DO UPDATE SET approximate=excluded.approximate').run(id,changes.approximate?1:0);
     this.replaceReminder(owner, id, now, next.reminder_minutes);
   }
   replaceReminder(owner, id, now, minutes) {

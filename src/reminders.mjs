@@ -37,7 +37,7 @@ export class ReminderWorker {
         results.push({ id: row.id, status: 'skipped' }); continue;
       }
       const user = this.store.user(row.owner);
-      const text = item ? `Бро, ${item.kind === 'task' ? 'приближается срок: ' : 'скоро '}${item.title} — ${formatDate(item.day, item.at, user.timezone)}.` : overview(this.store, row.owner, 'today', this.clock());
+      const text = item ? `Бро, ${item.kind === 'task' ? 'приближается срок: ' : 'скоро '}${item.title} — ${formatDate(item.day, item.at, user.timezone,item.approximate)}.` : overview(this.store, row.owner, 'today', this.clock());
       try {
         await send({ id: row.id, owner: row.owner, text, dedupeKey: row.dedupe });
         this.store.db.prepare("UPDATE reminders SET status='sent',sent_at=? WHERE id=? AND lease=? AND status='claimed'").run(this.clock(), row.id, row.lease);

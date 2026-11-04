@@ -29,8 +29,8 @@ test('dates are calculated in code across month/year boundaries and timezones', 
 test('unknown time/year, invalid dates, contradictory weekdays and DST ambiguities require clarification', () => {
   assert.throws(() => resolveDate('завтра', { now: NOW, requireTime: true }), /Во сколько/);
   assert.throws(() => resolveDate('30 февраля 2027', { now: NOW }), /Такой даты/);
-  assert.throws(() => resolveDate('следующую пятницу', { now: NOW }), /точную дату/);
-  assert.throws(() => resolveDate('1 января', { now: NOW }), /Укажи год/);
+  assert.equal(resolveDate('следующую пятницу', { now: NOW }).day,'2026-11-13');
+  assert.throws(() => resolveDate('1 января', { now: NOW }), error=>error.code==='YEAR_AMBIGUOUS');
   assert.throws(() => resolveDate('завтра в пятницу', { now: NOW }), /не совпадают/);
   assert.throws(() => localToUtc('2026-03-29', '02:30', 'Europe/Berlin'), /не существует/);
   assert.throws(() => localToUtc('2026-10-25', '02:30', 'Europe/Berlin'), /повторяется/);

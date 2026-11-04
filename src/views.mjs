@@ -6,7 +6,7 @@ export function overview(store, owner, scope, now) {
   const labels = { today: 'Сегодня', week: 'Ближайшие 7 дней', ahead: 'Все известные сроки и дела без даты', all: 'Все открытые дела' };
   const lines = items.map(item => {
     const overdue = item.day && (item.at ? item.at < now : item.day < today);
-    const date = item.day ? formatDate(item.day, item.at, user.timezone) : 'без срока';
+    const date = item.day ? formatDate(item.day, item.at, user.timezone,item.approximate) : 'без срока';
     const group = item.project ? ` [проект: ${item.project}]` : item.area && item.area !== 'Личное' ? ` [${item.area}]` : '';
     return `${overdue ? 'Просрочено: ' : ''}${item.title}${group} — ${date} [${item.id}]`;
   });
