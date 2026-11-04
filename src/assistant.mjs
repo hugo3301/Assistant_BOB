@@ -4,6 +4,7 @@ import { resolveDate, verifyDatePhrase, normalize, formatDate, cleanUserText } f
 import { selectTarget, allowDeadlineChange, isNewRequest, validatePermission } from './policy.mjs';
 import { decodeCalls } from './tools.mjs';
 import { overview } from './views.mjs';
+import {modelContext} from './context.mjs';
 
 export function reminderFromText(text, fallback) {
   const source = normalize(text);
@@ -24,9 +25,9 @@ export function durationFromText(text) {
 }
 
 export class Assistant {
-  constructor(store, { provider = null, allowedOwners = ['local'], clock = () => new Date().toISOString(), maxCalls = 2 } = {}) {
+  constructor(store, { provider = null, allowedOwners = ['local'], clock = () => new Date().toISOString(), maxCalls = 2, timeBudgetMs=18000 } = {}) {
     requireThat(Number.isInteger(maxCalls) && maxCalls >= 1 && maxCalls <= 2, 'CALL_LIMIT', 'Допускаются один или два модельных шага.');
-    this.store = store; this.provider = provider; this.allowedOwners = new Set(allowedOwners); this.clock = () => new Date(clock()).toISOString(); this.maxCalls = maxCalls; this.locks = new Map();
+    this.store = store; this.provider = provider; this.allowedOwners = new Set(allowedOwners); this.clock = () => new Date(clock()).toISOString(); this.maxCalls = maxCalls; this.timeBudgetMs=timeBudgetMs;this.locks = new Map();
   }
   handle(owner, text, options = {}) {
     requireThat(this.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Этот помощник не настроен для данного владельца.');
@@ -106,7 +107,7 @@ export class Assistant {
     const claim = this.store.beginTurn(owner, requestId, requestText??text, this.clock());
     if (claim.cached) return { ...claim.cached, replayed: true };
     text = cleanUserText(text);
-    let user = this.store.user(owner), modelCalls = 0;
+    let user = this.store.user(owner), modelCalls = 0;const deadline=Date.now()+this.timeBudgetMs;
     const commit = (response, mutate) => this.store.finishTurn(owner, requestId, claim.lease, user.revision, text, { modelCalls, ...response }, mutate);
     try {
       const command = /^\/(today|week|ahead|tasks)$/i.exec(text.trim());
@@ -146,10 +147,10 @@ export class Assistant {
       for (let attempt = 0; attempt < this.maxCalls; attempt++) {
         if (!calls) {
           requireThat(this.provider, 'AI_OFFLINE', 'ИИ не подключён. Доступны /today, /week, /ahead и /tasks.');
-          const contextItems = this.store.items(owner);
-          const context = { now: this.clock(), timezone: user.timezone, focus_id: user.focus_id, items: contextItems.slice(0, 30).map(item => ({ id: item.id, kind: item.kind, title: item.title, day: item.day, at: item.at, duration: item.duration })), more_items: contextItems.length > 30, history: user.history.slice(-3).map(turn => ({ user: turn.user.slice(0, 700), assistant: turn.assistant.slice(0, 700) })) };
+          const context = modelContext(this.store,owner,effectiveText,this.clock());
+          const remaining=deadline-Date.now();requireThat(remaining>=500,'AI_TIMEOUT','ИИ не успел ответить. Попробуй ещё раз; дела не изменены.');
           modelCalls++;
-          const generated = await this.provider.complete({ context, text: effectiveText, feedback: lastError });
+          const generated = await this.provider.complete({ context, text: effectiveText, feedback: lastError,timeoutMs:remaining });
           if (generated.usage) usage.push(generated.usage);
           try { calls = decodeCalls(generated.message); }
           catch (error) { lastError = error; if (attempt + 1 < this.maxCalls) continue; throw error; }

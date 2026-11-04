@@ -34,6 +34,7 @@ export const isNewRequest = text => /^\s*(?:\/|добав|создай|запи�
 
 export function validatePermission(name, text) {
   const source = normalize(text);
+  if(name.startsWith('create_'))requireThat(!/не\s+(?:(?:надо|нужно|хочу)\s+)?(?:добав|созда|запис|планир)|не\s+будет/u.test(source),'CREATE_NOT_REQUESTED','Не стал добавлять дело: в сообщении есть отрицание. Уточни, что нужно сохранить.');
   if(!['list_items','ask_user'].includes(name))requireThat(!/^\s*(?:как\s|если\s|что будет|можно ли)/u.test(source),'QUESTION_ONLY','Это вопрос о действии. Если хочешь изменить дела, напиши просьбу напрямую.');
   if (isReadRequest(text)) requireThat(name.startsWith('list_') || name === 'ask_user', 'READ_ONLY', 'Запрос на просмотр не разрешает изменять дела.');
   if (name === 'complete_task') requireThat(!/не\s+(?:сдал|сделал|готов|выполн|заверш|законч|отмеч|отмет)/u.test(source), 'COMPLETE_NOT_REQUESTED', 'В сообщении есть отрицание выполнения. Уточни, нужно ли закрыть дело.');

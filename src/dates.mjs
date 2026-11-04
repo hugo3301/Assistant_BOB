@@ -148,7 +148,7 @@ export function verifyDatePhrase(phrase, source) {
   requireThat(tokens.length>0 && tokens.every(token=>ignored.has(token)||evidence.includes(token)||clockEquivalent(token)||wordEquivalent(token)),'UNGROUNDED_DATE','Дата должна происходить из твоего сообщения. Уточни её обычным текстом.');
 }
 export function formatDate(day,at,timezone,approximate=false) {
-  if(!at)return `${day} (без точного времени)`;
+  if(!at)return `${new Intl.DateTimeFormat('ru',{timeZone:'UTC',day:'numeric',month:'long',year:'numeric'}).format(new Date(day+'T12:00:00Z'))} · без точного времени`;
   const formatted=new Intl.DateTimeFormat('ru',{timeZone:timezone,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(at));
   return approximate?formatted.replace(/(\d{2}:\d{2})$/u,'около $1'):formatted;
 }

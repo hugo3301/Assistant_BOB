@@ -1,14 +1,14 @@
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-const sent = [], calls = []; const secret='synthetic-webhook-secret-for-local-tests', admin='synthetic-admin-secret-for-local-tests';
+const sent = [], calls = [];let failNextSend=false; const secret='synthetic-webhook-secret-for-local-tests', admin='synthetic-admin-secret-for-local-tests';
 let calendarBody='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//BOB runtime tests//EN\r\nBEGIN:VEVENT\r\nUID:runtime-class\r\nSUMMARY:Runtime calendar class\r\nDTSTART;TZID=Asia/Tomsk:20261105T150000\r\nDTEND;TZID=Asia/Tomsk:20261105T160000\r\nEND:VEVENT\r\nEND:VCALENDAR';
 const configuration=convertV4MiniflareOptions({unsafeInspectDurableObjects:true,name:'bob-cloud-test',modules:true,scriptPath:resolve('work/build/worker.js'),compatibilityDate:'2026-11-04',compatibilityFlags:['nodejs_compat'],durableObjects:{BOB:{className:'BobObject',useSQLite:true}},resourcePersistencePath:resolve(`work/cloud-test-${Date.now()}`),bindings:{TELEGRAM_OWNER_ID:'123',TELEGRAM_BOT_TOKEN:'123456789:'+ 'A'.repeat(35),TELEGRAM_WEBHOOK_SECRET:secret,ADMIN_SECRET:admin,CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),WORKERS_AI_TOKEN:'synthetic-workers-ai-token-for-local-tests'},outboundService:async request=>{
   const url=new URL(request.url);calls.push(url.hostname);
   if(url.hostname==='api.telegram.org'){
     if(url.pathname.startsWith('/file/'))return new Response(calendarBody);
     if(url.pathname.endsWith('/getFile'))return Response.json({ok:true,result:{file_path:'documents/calendar.ics',file_size:Buffer.byteLength(calendarBody)}});
-    const body=await request.json();sent.push(body);return Response.json({ok:true,result:{message_id:sent.length}});
+    const body=await request.json();if(failNextSend&&url.pathname.endsWith('/sendMessage')){failNextSend=false;return Response.json({ok:false,parameters:{retry_after:1}},{status:429});}sent.push(body);return Response.json({ok:true,result:{message_id:sent.length}});
   }
   if(url.hostname==='api.cloudflare.com')return Response.json({choices:[{finish_reason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'one',function:{name:'create_task',arguments:JSON.stringify({title:'Проверка сервера',due_text:'12 ноября'})}}]}}],usage:{neurons:1}});
   throw Error('Unexpected external request in cloud test');
@@ -57,6 +57,16 @@ try{
   await until(()=>sent.some(message=>message.text?.includes('Дел: 2')));assert.equal((await status()).items,2);
   await request('/telegram/webhook',update(9,'все'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(async()=>(await status()).items===0);
   await request('/telegram/webhook',update(10,'верни как было'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(async()=>(await status()).items===2);
-  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
+  await until(async()=>(await status()).latency.samples===8&&(await status()).latency.replyMs!==null);
+  const latency=(await status()).latency;assert.equal(latency.withoutAI,8);assert.ok(latency.queueMs.p50<1000,'Immediate runner should remove the old one-second alarm floor');
+  const count=sent.filter(message=>message.text).length;failNextSend=true;
+  await request('/telegram/webhook',update(11,'/today'),{'X-Telegram-Bot-Api-Secret-Token':secret});
+  await until(async()=>(await status()).outbox.some(row=>row.status==='pending'));assert.equal(sent.filter(message=>message.text).length,count);
+  await request('/telegram/webhook',update(12,'/week'),{'X-Telegram-Bot-Api-Secret-Token':secret});
+  await until(async()=>(await status()).latency.samples===10);assert.equal(sent.filter(message=>message.text).length,count);
+  await mf.dispose();mf=new Miniflare(configuration);
+  await until(()=>sent.filter(message=>message.text).length===count+2);
+  assert.match(sent.filter(message=>message.text).at(-2).text,/Сегодня/);assert.match(sent.filter(message=>message.text).at(-1).text,/Ближайшие 7 дней/);
+  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

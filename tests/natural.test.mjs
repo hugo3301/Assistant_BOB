@@ -42,6 +42,8 @@ test('undo creation, move and completion is transactional and cannot overwrite n
 for(const [phrase,kind,day,time,title]of[
  ['> Добавь задачу сдать отчёт к 12 ноября.','task','2026-11-12',null,'сдать отчёт'],
  ['Надо купить продукты завтра','task','2026-11-05',null,'купить продукты'],
+ ['сдать отчёт к пятнице','task','2026-11-06',null,'сдать отчёт'],
+ ['в пятницу встреча с куратором в 15:00','event','2026-11-06','08:00','встреча с куратором'],
  ['можешь добавить задачу сдать отчёт к 12 ноября?','task','2026-11-12',null,'сдать отчёт'],
  ['завтра в 7 вечера встреча с преподавателем','event','2026-11-05','12:00','встреча с преподавателем'],
  ['сегодня вечером где-то к 7 вечера пара по схемату есть','event','2026-11-04','12:00','пара по схемату'],
@@ -55,3 +57,7 @@ test('ordinary views filter classes and date without AI; visible numbers identif
  }finally{store.close();}
 });
 test('negative, explanatory and unsupported bulk requests never call AI or alter data',async()=>{const {store,run}=setup();try{put(store,'keep');for(const text of ['не надо удалять все дела','как удалить все дела?','удали все пары кроме сетей']){const response=await run(text);assert.equal(response.changed,0);assert.equal(response.modelCalls,0);assert.equal(store.items('alice').length,1);}}finally{store.close();}});
+test('an old target clarification from the broken bulk dialogue turns into a proper confirmation',async()=>{const {store,run}=setup();try{put(store,'one');put(store,'two');store.db.prepare('UPDATE users SET pending=? WHERE id=?').run(JSON.stringify({kind:'target',originalText:'удали все мои дела',candidates:[{id:'one',title:'Отчёт'}],expiresAt:'2026-11-05T02:00:00.000Z'}),'alice');const response=await run('все');assert.match(response.text,/Дел: 2/);assert.equal(response.changed,0);assert.equal(store.items('alice').length,2);}finally{store.close();}});
+test('stale displayed numbers refresh the list before any modification',async()=>{const {store,run}=setup();try{put(store,'one');await run('все дела');store.changeItem('alice','one',{title:'Изменено'},NOW);const response=await run('удали 1');assert.match(response.text,/Список изменился/);assert.equal(response.modelCalls,0);assert.equal(store.items('alice').length,1);}finally{store.close();}});
+test('plain search, colloquial tomorrow and distant deadlines stay visible without AI',async()=>{const {store,run}=setup();try{put(store,'report',{title:'Отчёт',day:'2027-06-01'});put(store,'ical-near',{title:'Пара',kind:'event',at:'2026-11-05T08:00:00.000Z'});for(const text of ['найди отчет','найди задачу отчёт']){const response=await run(text);assert.match(response.text,/Отчёт/);assert.equal(response.modelCalls,0);}assert.match((await run('че там завтра?')).text,/Пара/);const overview=await run('все дела');assert.ok(overview.text.indexOf('Отчёт')<overview.text.indexOf('Пара'));assert.match(overview.text,/задач 1/);}finally{store.close();}});
+test('undo cannot orphan a new work interval added to a task after creation',async()=>{const {store,run}=setup();try{const created=await run('сдать проект к 12 ноября');put(store,'new-work',{kind:'work',parent_id:created.focusId,title:'Работа над проектом',at:'2026-11-05T08:00:00.000Z'});const result=await run('верни как было');assert.equal(result.code,'UNDO_STALE');assert.equal(store.items('alice').length,2);}finally{store.close();}});

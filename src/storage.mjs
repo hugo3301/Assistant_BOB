@@ -101,13 +101,16 @@ export class CoreStore {
     const changedSeries=after.series.filter(item=>item.active!==series.get(item.id)?.active).map(item=>({id:item.id,before:series.get(item.id)?.active??0,after:item.active}));
     if(!items.length&&!changedSeries.length)return null;
     const token=randomUUID().replaceAll('-','').slice(0,20),expires=new Date(Date.parse(now)+600000).toISOString();
-    this.db.prepare('INSERT INTO action_records VALUES (?,?,?,?,?,?)').run(token,owner,JSON.stringify({type:'undo',items,series:changedSeries}),now,expires,'ready');
+    const targets=new Set(items.map(item=>item.id)),seriesIds=new Set(changedSeries.map(item=>item.id)),dependents=after.items.filter(item=>!targets.has(item.id)&&(targets.has(item.parent_id)||seriesIds.has(item.series_id))).map(item=>({id:item.id,version:item.version}));
+    this.db.prepare('INSERT INTO action_records VALUES (?,?,?,?,?,?)').run(token,owner,JSON.stringify({type:'undo',items,series:changedSeries,dependents}),now,expires,'ready');
     this.db.prepare('DELETE FROM action_records WHERE owner=? AND expires_at<?').run(owner,now);return token;
   }
   undo(owner,token,now){
     const row=this.db.prepare("SELECT * FROM action_records WHERE owner=? AND token=? AND state='ready' AND expires_at>?").get(owner,token,now);requireThat(row,'UNDO_EXPIRED','Это изменение уже отменено или прошло больше 10 минут.');const action=JSON.parse(row.data);requireThat(action.type==='undo','UNDO_EXPIRED','Это действие нельзя отменить.');
     for(const entry of action.items){const item=this.item(owner,entry.id);requireThat(item&&item.version===entry.version&&item.status===entry.status,'UNDO_STALE','После этого дела уже менялись. Автоматическая отмена затронула бы новые правки — открой актуальный список.');}
     for(const entry of action.series){const series=this.db.prepare('SELECT active FROM weekly_series WHERE owner=? AND id=?').get(owner,entry.id);requireThat(series?.active===entry.after,'UNDO_STALE','Серия уже изменилась. Открой актуальный список.');}
+    const ids=new Set(action.items.map(item=>item.id)),seriesIds=new Set(action.series.map(item=>item.id)),dependents=new Map((action.dependents??[]).map(item=>[item.id,item.version]));
+    for(const item of this.items(owner,{includeClosed:true}).filter(item=>!ids.has(item.id)&&(ids.has(item.parent_id)||seriesIds.has(item.series_id))))requireThat(dependents.get(item.id)===item.version,'UNDO_STALE','После этого появились или изменились связанные дела. Автоматическая отмена их затронет — открой актуальный список.');
     for(const entry of action.items){const item=entry.before;if(!item){this.changeItem(owner,entry.id,{status:'cancelled'},now);continue;}
       this.db.prepare('UPDATE items SET title=?,day=?,at=?,duration=?,status=?,reminder_minutes=?,version=version+1 WHERE owner=? AND id=?').run(item.title,item.day,item.at,item.duration,item.status,item.reminder_minutes,owner,item.id);
       this.db.prepare('INSERT INTO item_time_meta VALUES (?,?) ON CONFLICT(item_id) DO UPDATE SET approximate=excluded.approximate').run(item.id,item.approximate?1:0);this.replaceReminder(owner,item.id,now,item.reminder_minutes);

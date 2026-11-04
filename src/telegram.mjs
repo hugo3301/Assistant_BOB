@@ -14,13 +14,14 @@ export class Telegram {
     try {
       const response = await (0, this.fetcher)(`https://api.telegram.org/bot${this.token}/${method}`, {method:'POST', ...(multipart ? {body:data} : {headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),signal:AbortSignal.timeout(15000)});
       const payload = await response.json();
-      if (!response.ok || !payload.ok) { const error = new BobError('TG_API','Telegram временно не принял сообщение.'); error.retryAfter = Number(payload.parameters?.retry_after) || 0; error.unchanged=method==='editMessageText'&&/message is not modified/i.test(payload.description??''); throw error; }
+      if (!response.ok || !payload.ok) { const error = new BobError('TG_API','Telegram временно не принял сообщение.'); error.retryAfter = Number(payload.parameters?.retry_after) || 0; error.unchanged=method==='editMessageText'&&/message is not modified/i.test(payload.description??'');error.editUnavailable=method==='editMessageText'&&/message to edit not found|message can't be edited|MESSAGE_ID_INVALID/i.test(payload.description??''); throw error; }
       return payload.result;
     } catch (error) { if (error instanceof BobError) throw error; throw new BobError('TG_NETWORK','Telegram не ответил.'); }
   }
   send(chat, text, replyMarkup) { return this.call('sendMessage',{chat_id:chat,text,link_preview_options:{is_disabled:true},reply_markup:replyMarkup??{keyboard:[[{text:'Сегодня'},{text:'Неделя'},{text:'Все дела'}],[{text:'Проекты'},{text:'Настройки'},{text:'Помощь'}]],resize_keyboard:true,is_persistent:true}}); }
-  async edit(chat,message,text,replyMarkup){try{return await this.call('editMessageText',{chat_id:chat,message_id:message,text,reply_markup:replyMarkup,link_preview_options:{is_disabled:true}});}catch(error){if(error.unchanged)return;throw error;}}
+  async edit(chat,message,text,replyMarkup){try{return await this.call('editMessageText',{chat_id:chat,message_id:message,text,reply_markup:replyMarkup,link_preview_options:{is_disabled:true}});}catch(error){if(error.unchanged)return;if(error.editUnavailable)return this.send(chat,text,replyMarkup);throw error;}}
   answer(id){return this.call('answerCallbackQuery',{callback_query_id:id});}
+  typing(chat){return this.call('sendChatAction',{chat_id:chat,action:'typing'});}
   document(chat, file) { const form = new FormData(); form.set('chat_id',String(chat)); form.set('document',new Blob([file.text],{type:'application/json'}),file.name); return this.call('sendDocument',form,true); }
   async calendar(fileId) {
     const info = await this.call('getFile',{file_id:fileId});
