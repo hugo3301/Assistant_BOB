@@ -24,6 +24,10 @@ export class Telegram {
   answer(id){return this.call('answerCallbackQuery',{callback_query_id:id});}
   typing(chat){return this.call('sendChatAction',{chat_id:chat,action:'typing'});}
   document(chat, file) { const form = new FormData(); form.set('chat_id',String(chat)); form.set('document',new Blob([file.text],{type:'application/json'}),file.name); return this.call('sendDocument',form,true); }
+  async voice(fileId){
+    const info=await this.call('getFile',{file_id:fileId});requireThat((info.file_size??0)<=2000000&&/^[\w/.-]+$/u.test(info.file_path??'')&&!info.file_path.includes('..'),'VOICE_SIZE','Пришли голосовое до 2 МБ.');
+    try{const response=await (0,this.fetcher)(`https://api.telegram.org/file/bot${this.token}/${info.file_path}`,{signal:AbortSignal.timeout(15000)});requireThat(response.ok,'VOICE_DOWNLOAD','Не удалось скачать голосовое. Отправь его заново.');const chunks=[];let size=0;for await(const chunk of response.body){size+=chunk.length;requireThat(size<=2000000,'VOICE_SIZE','Запись больше 2 МБ.');chunks.push(chunk);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}catch(error){if(error instanceof BobError)throw error;throw new BobError('VOICE_DOWNLOAD','Не удалось скачать голосовое. Отправь его заново или напиши текстом.');}
+  }
   async calendar(fileId) {
     const info = await this.call('getFile',{file_id:fileId});
     requireThat((info.file_size??0) <= 1000000 && /^[\w/.-]+$/.test(info.file_path ?? '') && !info.file_path.includes('..'),'ICAL_SIZE','Нужен .ics не больше 1 МБ.');

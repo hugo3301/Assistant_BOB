@@ -10,6 +10,7 @@ import { BobError,requireThat } from './errors.mjs';
 import {friendlyResponse} from './views.mjs';
 import {callUser,callControl,SharedBudget} from './routing.mjs';
 import {dayAt,addDays,localToUtc} from './dates.mjs';
+import {SpeechAI,VoiceFlow} from './voice.mjs';
 export {ControlObject} from './control-worker.mjs';
 const VERSION = '0.2.0-alpha';
 function equalSecret(actual, expected) { if (typeof actual !== 'string' || typeof expected !== 'string' || expected.length < 24) return false; const a = new TextEncoder().encode(actual), b = new TextEncoder().encode(expected); return a.length === b.length && timingSafeEqual(a,b); }
@@ -54,7 +55,7 @@ export class BobObject extends DurableObject {
   initialize(owner){requireThat(/^[1-9]\d{0,19}$/u.test(owner??'')&&this.ctx.id.toString()===this.env.BOB.idFromName(`owner:${owner}:v1`).toString()&&(!this.owner||this.owner===owner),'TENANT_OWNER','Нет доступа к этому хранилищу.');if(this.owner)return;this.owner=owner;
     this.store.ensureUser(owner,{timezone:'Asia/Tomsk',morningTime:'08:00',reminderMinutes:60});
     const now=new Date().toISOString();if(owner===String(this.env.TELEGRAM_OWNER_ID)&&this.env.AI_BUDGET_SEED_DAY===now.slice(0,10))this.store.db.prepare('INSERT OR IGNORE INTO budget(day,spent,reserved) VALUES (?,?,0)').run(now.slice(0,10),Number(this.env.AI_BUDGET_SEED_NEURONS)||0);
-    this.budget=new SharedBudget(this.env,owner);this.assistant=new Assistant(this.store,{provider:new WorkersAI(this.store,{accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget}),allowedOwners:[owner]});this.alpha=new Alpha(this.store,this.assistant,{admin:owner===String(this.env.TELEGRAM_OWNER_ID)});this.reminders=new ReminderWorker(this.store);this.paused=this.store.db.prepare("SELECT value FROM runtime_health WHERE key='paused'").get()?.value==='1';
+    this.budget=new SharedBudget(this.env,owner);this.assistant=new Assistant(this.store,{provider:new WorkersAI(this.store,{accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget}),allowedOwners:[owner]});this.alpha=new Alpha(this.store,this.assistant,{admin:owner===String(this.env.TELEGRAM_OWNER_ID)});this.voice=new VoiceFlow(this.store,owner,{telegram:this.telegram,speech:new SpeechAI({accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget})});this.reminders=new ReminderWorker(this.store);this.paused=this.store.db.prepare("SELECT value FROM runtime_health WHERE key='paused'").get()?.value==='1';
   }
   health(key) { this.store.db.prepare('INSERT INTO runtime_health VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,new Date().toISOString()); }
   async fetch(request) {
@@ -116,6 +117,7 @@ export class BobObject extends DurableObject {
       const service=await this.serviceMessage(message.text??'',callback,`tg:${job.id}`);
       if(service)response=service;
       else if(callback){response=await this.alpha.handle(this.owner,'',{requestId:`tg:${job.id}`,callback});}
+      else if(message.voice)response=await this.voice.handle(message.voice,`tg:${job.id}`,text=>this.alpha.handle(this.owner,text,{requestId:`tg:${job.id}`}));
       else if (message.document) {
         if ((!/\.ics$/i.test(message.document.file_name ?? '')&&!['text/calendar','application/ics','application/icalendar'].includes(message.document.mime_type)) || message.document.file_size > 1000000) response = {text:'Пришли расписание файлом .ics до 1 МБ. Другие вложения в альфе пока не обрабатываю.'};
         else {
@@ -123,7 +125,7 @@ export class BobObject extends DurableObject {
           response = await this.alpha.handle(this.owner,`Файл расписания ${message.document.file_unique_id}`,{requestId:`tg:${job.id}`,documentText,caption:message.caption??''});
         }
       } else if (typeof message.text === 'string' && message.text.length <= 8000) response = await this.alpha.handle(this.owner,message.text,{requestId:`tg:${job.id}`});
-      else response = {text:'Пока понимаю текст и расписание .ics. Напиши /help.'};
+      else response = {text:'Пришли текст, голосовое до 2 минут или расписание .ics. Открыть меню: /start.'};
       response=friendlyResponse(response);
       const chunks=splitMessage(response.text),payloads = chunks.map((text,index) => ({text,...(index===chunks.length-1&&response.replyMarkup?{replyMarkup:response.replyMarkup}:{}),...(callback&&response.edit&&chunks.length===1?{editMessageId:message.message_id}:{})})); if (response.file) payloads.push({file:response.file});
       this.store.transaction(() => {

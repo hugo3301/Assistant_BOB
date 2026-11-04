@@ -1,7 +1,7 @@
 import {randomBytes,createHash,randomUUID} from 'node:crypto';
 import {requireThat} from './errors.mjs';
 
-export const FREE_POLICY=Object.freeze({users:10,total:9000,person:800,voiceSeconds:120,voiceBytes:4000000});
+export const FREE_POLICY=Object.freeze({users:10,total:9000,person:800,voiceSeconds:120,voiceBytes:2000000});
 const hash=code=>createHash('sha256').update(code).digest('hex');
 export class ControlStore{
  constructor(db,{admin,clock=()=>new Date().toISOString(),mode='invite',total=FREE_POLICY.total,person=FREE_POLICY.person,maxUsers=FREE_POLICY.users}={}){
