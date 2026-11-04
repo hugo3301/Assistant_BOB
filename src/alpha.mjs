@@ -3,6 +3,8 @@ import { BobError, requireThat } from './errors.mjs';
 import { dayAt, addDays, localToUtc, formatDate, normalize } from './dates.mjs';
 import { calendarPreview, calendarImport } from './calendar.mjs';
 import {prepareCalendarUpload,prepareCalendarChoice,isCalendarAnswer} from './calendar-flow.mjs';
+import {BotUI} from './bot-ui.mjs';
+import {isNewRequest} from './policy.mjs';
 
 export const HELP = `Я BOB, твой личный помощник. Напиши: «Добавь задачу сдать отчёт к 12 ноября» или «Встреча завтра в 15:00, напомни за час». Следом можно: «Перенеси её на завтра в 16:00».
 
@@ -24,18 +26,26 @@ export const HELP = `Я BOB, твой личный помощник. Напиш�
 
 Альфа: серии задаются командой, сложные даты могут требовать уточнения. Сообщения с делами обрабатывает Cloudflare Workers AI. Неотправленные уведомления видны в /status.`;
 export class Alpha {
-  constructor(store, assistant, { clock = () => new Date().toISOString() } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; }
+  constructor(store, assistant, { clock = () => new Date().toISOString() } = {}) { this.store = store; this.assistant = assistant; this.clock = clock; this.ui=new BotUI(store,{clock,dispatch:(owner,text,options)=>this.handle(owner,text,{...options,skipUi:true})}); }
   preferences(owner) { return this.store.db.prepare('SELECT * FROM alpha_preferences WHERE owner=?').get(owner); }
-  async handle(owner, text, { requestId, documentText,caption='' } = {}) {
+  async handle(owner, text, { requestId=randomUUID(), documentText,caption='',requestText,callback,skipUi=false } = {}) {
     requireThat(this.assistant.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Нет доступа.');
     this.store.ensureUser(owner);
+    if(!skipUi&&documentText===undefined){const result=await this.ui.handle(owner,text,{requestId,callback,requestText});if(result)return result;}
+    const moving=this.store.user(owner).pending;
+    if(!callback&&documentText===undefined&&moving?.kind==='ui_move'&&moving.expiresAt>this.clock()&&!isNewRequest(text)){
+      const item=this.store.item(owner,moving.id);
+      if(item?.status!=='open'||item.version!==moving.version)return this.assistant.handle(owner,'/cancel',{requestId,requestText:text});
+      const task=item.kind==='task',source=`Перенеси ${task?'срок сдачи ':''}${item.id} на ${text}`;
+      return this.assistant.handle(owner,source,{requestId,requestText:text,applicationCalls:[{name:task?'change_deadline':'move_event',args:{target_id:item.id,[task?'due_text':'when_text']:text}}]});
+    }
     const command = /^\/(\w+)(?:@[\w]+)?(?:\s+([\s\S]*))?$/.exec(text.trim());
     let name = documentText === undefined ? command?.[1]?.toLowerCase() : 'calendar_upload';
     const argument = command?.[2]?.trim() ?? '';
     if(!name&&isCalendarAnswer(this.store,owner,text,this.clock()))name='calendar_choice';
-    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)) return this.assistant.handle(owner, text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId });
+    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)) return this.assistant.handle(owner, text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId,requestText });
     this.store.ensureUser(owner); const now = this.clock();
-    const claim = this.store.beginTurn(owner, requestId, documentText === undefined ? text : text + '\n' + caption + '\n' + documentText, now);
+    const claim = this.store.beginTurn(owner, requestId, requestText??(documentText === undefined ? text : text + '\n' + caption + '\n' + documentText), now);
     if (claim.cached) return { ...claim.cached, replayed: true };
     const user = this.store.user(owner), preferences = this.preferences(owner);
     let result = '', mutate = () => {}, file = null,extra={};

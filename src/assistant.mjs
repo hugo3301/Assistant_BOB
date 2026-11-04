@@ -99,11 +99,11 @@ export class Assistant {
     }
     return prepared;
   }
-  async run(owner, text, { requestId = randomUUID(), source = 'user' } = {}) {
+  async run(owner, text, { requestId = randomUUID(), source = 'user',requestText,applicationCalls } = {}) {
     requireThat(typeof text === 'string' && text.trim().length > 0 && text.length <= 8000, 'INVALID_TEXT', 'Сообщение должно содержать от 1 до 8000 символов.');
     if (source !== 'user') return { status: 'material', text: 'Материал не является командой пользователя. Записи не изменены.', changed: 0 };
     this.store.ensureUser(owner);
-    const claim = this.store.beginTurn(owner, requestId, text, this.clock());
+    const claim = this.store.beginTurn(owner, requestId, requestText??text, this.clock());
     if (claim.cached) return { ...claim.cached, replayed: true };
     text = cleanUserText(text);
     let user = this.store.user(owner), modelCalls = 0;
@@ -118,11 +118,11 @@ export class Assistant {
         return commit({ status: 'ok', text: found.length ? found.map(item => `${item.title} — ${item.day ? formatDate(item.day, item.at, user.timezone,item.approximate) : 'без срока'} [${item.id}]`).join('\n') : 'Подходящих открытых дел нет.', changed: 0 });
       }
       if (/^\/(?:cancel|отмена)$/i.test(text.trim())) return commit({ status: 'ok', text: 'Уточнение отменено. Дела не изменены.', changed: 0, pending: null });
-      let pending = user.pending;
+      let pending = ['date','target','question'].includes(user.pending?.kind)?user.pending:null;
       if (pending && (pending.expiresAt <= this.clock() || isNewRequest(text))) pending = null;
       const effectiveText = pending ? `${pending.originalText}\nУточнение: ${text}` : text;
       const referenceAt = pending?.referenceAt ?? this.clock();
-      let calls = null;
+      let calls = applicationCalls??null;
       if (pending?.kind === 'date') {
         calls = structuredClone(pending.calls);
         const args = calls[pending.index].args;

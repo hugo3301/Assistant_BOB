@@ -33,11 +33,12 @@ test('profile commands are idempotent and reject invalid settings',async()=>{
   }finally{store.close();}
 });
 test('new tasks inherit selected project and category, and projects include undated work',async()=>{
-  const {store,run}=setup();try{
+  const {store,run,alpha}=setup();try{
     await run('/project Диплом');await run('/area Учёба');
     store.putItem({id:'work-one',owner:'alice',kind:'task',title:'Разобрать статью'},NOW,60);
     assert.equal(store.item('alice','work-one').project,'Диплом');assert.equal(store.item('alice','work-one').area,'Учёба');
-    assert.match((await run('/projects')).text,/Разобрать статью — без даты/);
+    const projects=await run('/projects');assert.match(projects.text,/Диплом · 1/);
+    const project=await alpha.handle('alice','',{requestId:'project-card',callback:{id:'project-card',data:projects.replyMarkup.inline_keyboard[0][0].callback_data}});assert.match(project.text,/Разобрать статью/);assert.match(project.text,/БЕЗ СРОКА/);
     await run('/project off');store.putItem({id:'work-two',owner:'alice',kind:'task',title:'Лабораторная'},NOW,60);
     assert.equal(store.item('alice','work-two').project,null);
   }finally{store.close();}

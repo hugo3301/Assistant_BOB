@@ -14,6 +14,6 @@ for (const language_code of ['', 'ru']) {
   await telegram.call('setMyDescription',{description:'BOB alpha — личный помощник: задачи, сроки, встречи, проекты и напоминания. Доступ только владельцу. Напиши /start, затем сообщение обычным текстом. ИИ: Cloudflare Workers AI.',language_code});
   await telegram.call('setMyShortDescription',{short_description:'Личный помощник BOB: дела, расписание и напоминания. Закрытая альфа.',language_code});
 }
-await telegram.call('setWebhook',{url:`${base}/telegram/webhook`,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message'],max_connections:1,drop_pending_updates:false});
+await telegram.call('setWebhook',{url:`${base}/telegram/webhook`,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message','callback_query'],max_connections:1,drop_pending_updates:false});
 const hook = await telegram.call('getWebhookInfo',{});
 console.log(JSON.stringify({bot:me.username,webhook:hook.url,pendingUpdates:hook.pending_update_count,commands:commands.length}));

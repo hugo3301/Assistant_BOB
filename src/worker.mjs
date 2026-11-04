@@ -7,6 +7,7 @@ import { Alpha } from './alpha.mjs';
 import { ReminderWorker } from './reminders.mjs';
 import { Telegram, isOwnerUpdate, splitMessage } from './telegram.mjs';
 import { BobError } from './errors.mjs';
+import {friendlyResponse} from './views.mjs';
 const VERSION = '0.2.0-alpha';
 function equalSecret(actual, expected) { if (typeof actual !== 'string' || typeof expected !== 'string' || expected.length < 24) return false; const a = new TextEncoder().encode(actual), b = new TextEncoder().encode(expected); return a.length === b.length && timingSafeEqual(a,b); }
 function object(env) { return env.BOB.get(env.BOB.idFromName(`owner:${env.TELEGRAM_OWNER_ID}:v1`)); }
@@ -72,8 +73,9 @@ export class BobObject extends DurableObject {
     });
     if (!job) return;
     try {
-      const update = JSON.parse(job.payload), message = update.message; let response;
-      if (message.document) {
+      const update = JSON.parse(job.payload), callback=update.callback_query,message = callback?.message??update.message; let response;
+      if(callback){try{await this.telegram.answer(callback.id);}catch{} response=await this.alpha.handle(this.owner,'',{requestId:`tg:${job.id}`,callback});}
+      else if (message.document) {
         if ((!/\.ics$/i.test(message.document.file_name ?? '')&&!['text/calendar','application/ics','application/icalendar'].includes(message.document.mime_type)) || message.document.file_size > 1000000) response = {text:'Пришли расписание файлом .ics до 1 МБ. Другие вложения в альфе пока не обрабатываю.'};
         else {
           const documentText = await this.telegram.calendar(message.document.file_id);
@@ -81,7 +83,8 @@ export class BobObject extends DurableObject {
         }
       } else if (typeof message.text === 'string' && message.text.length <= 8000) response = await this.alpha.handle(this.owner,message.text,{requestId:`tg:${job.id}`});
       else response = {text:'Пока понимаю текст и расписание .ics. Напиши /help.'};
-      const payloads = splitMessage(response.text).map(text => ({text})); if (response.file) payloads.push({file:response.file});
+      response=friendlyResponse(response);
+      const chunks=splitMessage(response.text),payloads = chunks.map((text,index) => ({text,...(index===chunks.length-1&&response.replyMarkup?{replyMarkup:response.replyMarkup}:{}),...(callback&&response.edit&&chunks.length===1?{editMessageId:message.message_id}:{})})); if (response.file) payloads.push({file:response.file});
       this.store.transaction(() => {
         for (const [index,payload] of payloads.entries()) this.store.db.prepare('INSERT OR IGNORE INTO telegram_outbox(id,payload,next_at) VALUES (?,?,?)').run(`reply:${job.id}:${index}`,JSON.stringify(payload),new Date().toISOString());
         this.store.db.prepare("UPDATE telegram_jobs SET status='done',payload='{}',lease_until=NULL,last_error=NULL WHERE id=?").run(job.id);
@@ -104,7 +107,7 @@ export class BobObject extends DurableObject {
     for (const row of rows) {
       try {
         const payload = JSON.parse(row.payload);
-        if (payload.file) await this.telegram.document(this.owner,payload.file); else await this.telegram.send(this.owner,payload.text);
+        if (payload.file) await this.telegram.document(this.owner,payload.file); else if(payload.editMessageId)await this.telegram.edit(this.owner,payload.editMessageId,payload.text,payload.replyMarkup);else await this.telegram.send(this.owner,payload.text,payload.replyMarkup);
         this.store.db.prepare("UPDATE telegram_outbox SET status='sent',payload='{}',sent_at=?,attempts=attempts+1,last_error=NULL WHERE id=?").run(new Date().toISOString(),row.id);
       } catch (error) {
         const attempts = row.attempts+1, delay = Math.max(5000*2**Math.min(attempts,6),(error.retryAfter ?? 0)*1000);

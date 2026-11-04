@@ -22,6 +22,8 @@ export class CoreStore {
       CREATE TABLE IF NOT EXISTS calendar_previews(owner TEXT PRIMARY KEY, body TEXT NOT NULL, selected TEXT, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS calendar_filters(owner TEXT PRIMARY KEY,calendar_id TEXT NOT NULL,selected_keys TEXT NOT NULL,known_keys TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS calendar_items(item_id TEXT PRIMARY KEY,owner TEXT NOT NULL,calendar_id TEXT NOT NULL,filter_key TEXT NOT NULL,excluded INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS ui_views(token TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,expires_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS ui_state(owner TEXT PRIMARY KEY,data TEXT NOT NULL);
 `);
     this.db.prepare('INSERT OR IGNORE INTO bob_schema VALUES (1)').run();
   }
@@ -69,6 +71,12 @@ export class CoreStore {
       this.db.prepare('INSERT INTO turns VALUES (?,?,?,?,?,NULL) ON CONFLICT(owner,request_id) DO UPDATE SET lease=excluded.lease,lease_until=excluded.lease_until').run(owner, requestId, hash, lease, new Date(Date.parse(now) + 180000).toISOString());
       return { lease };
     });
+  }
+  cachedTurn(owner,requestId,text) {
+    const row=this.db.prepare('SELECT hash,response FROM turns WHERE owner=? AND request_id=?').get(owner,requestId);
+    if(!row)return null;
+    requireThat(row.hash===createHash('sha256').update(text).digest('hex'),'REQUEST_REUSED','Это сообщение уже обработано с другим содержимым.');
+    return row.response?{...JSON.parse(row.response),replayed:true}:null;
   }
   finishTurn(owner, requestId, lease, revision, text, response, mutate = () => {}) {
     return this.transaction(() => {

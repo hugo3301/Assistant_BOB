@@ -5,8 +5,8 @@ export function splitMessage(text, limit = 3500) {
   if (rest) result.push(rest); return result;
 }
 export function isOwnerUpdate(update, owner) {
-  const message = update?.message;
-  return Number.isSafeInteger(update?.update_id) && message?.chat?.type === 'private' && String(message?.from?.id) === String(owner) && String(message?.chat?.id) === String(owner) && !message?.from?.is_bot;
+  const callback=update?.callback_query,message=callback?.message??update?.message,sender=callback?.from??message?.from;
+  return Number.isSafeInteger(update?.update_id) && message?.chat?.type === 'private' && String(sender?.id) === String(owner) && String(message?.chat?.id) === String(owner) && !sender?.is_bot && (!callback||(typeof callback.id==='string'&&typeof callback.data==='string'&&callback.data.length<=64&&Number.isSafeInteger(message.message_id)));
 }
 export class Telegram {
   constructor(token, {fetcher = fetch} = {}) { requireThat(/^\d+:[A-Za-z0-9_-]{30,}$/.test(token ?? ''),'TG_CONFIG','Telegram не настроен.'); this.token = token; this.fetcher = fetcher; }
@@ -14,11 +14,13 @@ export class Telegram {
     try {
       const response = await (0, this.fetcher)(`https://api.telegram.org/bot${this.token}/${method}`, {method:'POST', ...(multipart ? {body:data} : {headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),signal:AbortSignal.timeout(15000)});
       const payload = await response.json();
-      if (!response.ok || !payload.ok) { const error = new BobError('TG_API','Telegram временно не принял сообщение.'); error.retryAfter = Number(payload.parameters?.retry_after) || 0; throw error; }
+      if (!response.ok || !payload.ok) { const error = new BobError('TG_API','Telegram временно не принял сообщение.'); error.retryAfter = Number(payload.parameters?.retry_after) || 0; error.unchanged=method==='editMessageText'&&/message is not modified/i.test(payload.description??''); throw error; }
       return payload.result;
     } catch (error) { if (error instanceof BobError) throw error; throw new BobError('TG_NETWORK','Telegram не ответил.'); }
   }
-  send(chat, text) { return this.call('sendMessage',{chat_id:chat,text,link_preview_options:{is_disabled:true},reply_markup:{keyboard:[[{text:'/today'},{text:'/week'},{text:'/ahead'}],[{text:'/projects'},{text:'/settings'},{text:'/help'}]],resize_keyboard:true,is_persistent:true}}); }
+  send(chat, text, replyMarkup) { return this.call('sendMessage',{chat_id:chat,text,link_preview_options:{is_disabled:true},reply_markup:replyMarkup??{keyboard:[[{text:'Сегодня'},{text:'Неделя'},{text:'Все дела'}],[{text:'Проекты'},{text:'Настройки'},{text:'Помощь'}]],resize_keyboard:true,is_persistent:true}}); }
+  async edit(chat,message,text,replyMarkup){try{return await this.call('editMessageText',{chat_id:chat,message_id:message,text,reply_markup:replyMarkup,link_preview_options:{is_disabled:true}});}catch(error){if(error.unchanged)return;throw error;}}
+  answer(id){return this.call('answerCallbackQuery',{callback_query_id:id});}
   document(chat, file) { const form = new FormData(); form.set('chat_id',String(chat)); form.set('document',new Blob([file.text],{type:'application/json'}),file.name); return this.call('sendDocument',form,true); }
   async calendar(fileId) {
     const info = await this.call('getFile',{file_id:fileId});
