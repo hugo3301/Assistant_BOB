@@ -1,0 +1,14 @@
+{
+  "status": "recommended_for_first_dialogue_prototype",
+  "model": "@cf/zai-org/glm-4.7-flash",
+  "temperature": 0.1,
+  "max_tokens": 1536,
+  "stream": false,
+  "chat_template_kwargs": { "enable_thinking": false, "clear_thinking": true },
+  "tool_style": "domain",
+  "max_model_calls_per_turn_proposed": 2,
+  "fallback": "deterministic_commands_and_saved_reminders",
+  "paid_fallback_allowed": false,
+  "evidence": "docs/api-validation.md",
+  "limits": "Prototype recommendation; natural-language authorization and general date parsing are not implemented."
+}

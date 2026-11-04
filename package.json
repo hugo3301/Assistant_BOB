@@ -1,0 +1,24 @@
+{
+  "name": "assistant-bob",
+  "version": "0.2.0-alpha",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs experiments/workers-ai/tests/*.test.mjs",
+    "chat": "node --env-file-if-exists=.env scripts/chat.mjs",
+    "demo": "node scripts/demo.mjs",
+    "build:cloud": "node scripts/build-cloud.mjs",
+    "test:cloud": "node scripts/build-cloud.mjs && node scripts/check-cloud-local.mjs",
+    "deploy": "node --env-file=.env scripts/deploy.mjs"
+  },
+  "dependencies": {
+    "ical.js": "2.2.1"
+  },
+  "devDependencies": {
+    "miniflare": "5.20261103.0-beta",
+    "wrangler": "4.157.0"
+  }
+}

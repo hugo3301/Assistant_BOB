@@ -1,0 +1,10 @@
+{
+  "name": "bob-workers-ai-evaluation",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "eval:ai": "node --env-file-if-exists=../../.env scripts/evaluate-ai.mjs"
+  }
+}

@@ -5,3 +5,16 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Local credentials and runtime files
+.env
+.env.*
+!.env.example
+*.log
+
+/experiments/workers-ai/work/
+/work/
+/node_modules/
+/.wrangler/
+/.dev.vars
+/.dev.vars.*
