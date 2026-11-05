@@ -6,6 +6,7 @@ import { decodeCalls } from './tools.mjs';
 import { overview } from './views.mjs';
 import {modelContext} from './context.mjs';
 import {conversationIntent,fastConversation} from './conversation.mjs';
+import {readDuration} from './duration.mjs';
 
 export function reminderFromText(text, fallback) {
   const source = normalize(text);
@@ -17,14 +18,7 @@ export function reminderFromText(text, fallback) {
   if (match) { const minutes = Number(match[1]) * (match[2].startsWith('час') ? 60 : 1); requireThat(minutes <= 43200, 'REMINDER_RANGE', 'Слишком большой интервал напоминания.'); return minutes; }
   return fallback;
 }
-export function durationFromText(text) {
-  const source = normalize(text);
-  if (/(?:на|выдели|уточнение:)\s+полчаса/u.test(source) || source === 'полчаса') return 30;
-  if (/(?:на|выдели|уточнение:)\s+(?:один\s+)?час(?:\s|[,.!?]|$)/u.test(source) || source === 'час') return 60;
-  const match = /(?:на|выдели|уточнение:)\s+(\d+)\s*(минут[а-я]*|час[а-я]*)/u.exec(source);
-  return match ? Number(match[1]) * (match[2].startsWith('час') ? 60 : 1) : null;
-}
-
+export const durationFromText=readDuration;
 export class Assistant {
   constructor(store, { provider = null, allowedOwners = ['local'], clock = () => new Date().toISOString(), maxCalls = 2, timeBudgetMs=18000 } = {}) {
     requireThat(Number.isInteger(maxCalls) && maxCalls >= 1 && maxCalls <= 2, 'CALL_LIMIT', 'Допускаются один или два модельных шага.');
