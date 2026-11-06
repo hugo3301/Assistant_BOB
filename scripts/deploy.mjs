@@ -9,7 +9,7 @@ for (const key of ['TELEGRAM_WEBHOOK_SECRET','ADMIN_SECRET']) if (!process.env[k
 writeFileSync(envPath,local);
 const secrets = {TELEGRAM_BOT_TOKEN:process.env.TELEGRAM_BOT_TOKEN,TELEGRAM_OWNER_ID:process.env.TELEGRAM_OWNER_ID,WORKERS_AI_TOKEN:process.env.CLOUDFLARE_API_TOKEN,TELEGRAM_WEBHOOK_SECRET:process.env.TELEGRAM_WEBHOOK_SECRET,ADMIN_SECRET:process.env.ADMIN_SECRET};
 if (Object.values(secrets).some(value=>!value)) throw Error('Missing runtime configuration');
-for(const key of ['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','CALENDAR_SECRET_KEY','GROQ_API_KEY'])if(process.env[key])secrets[key]=process.env[key];
+for(const key of ['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','CALENDAR_SECRET_KEY','GROQ_API_KEY','GIGACHAT_RELAY_URL','GIGACHAT_RELAY_SECRET'])if(process.env[key])secrets[key]=process.env[key];
 secrets.GROQ_ENABLED=process.env.GROQ_ENABLED==='true'?'true':'false';secrets.GROQ_FREE_CONFIRMED=process.env.GROQ_FREE_CONFIRMED==='true'?'true':'false';
 for(const key of ['GIGACHAT_ENABLED','GIGACHAT_FREE_CONFIRMED','GIGACHAT_PUBLIC_USE_CONFIRMED','GIGACHAT_TRANSPORT_VERIFIED','GIGACHAT_EVALUATED'])secrets[key]=process.env[key]==='true'?'true':'false';
 secrets.GIGACHAT_TOKEN_CAP=String(Math.max(0,Math.floor(Number(process.env.GIGACHAT_TOKEN_CAP)||0)));

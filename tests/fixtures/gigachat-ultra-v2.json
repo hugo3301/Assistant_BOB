@@ -1,0 +1,131 @@
+{
+  "synthetic": true,
+  "recordedDateTomsk": "2026-11-07",
+  "referenceAt": "2026-11-06T02:00:00.000Z",
+  "cases": [
+    {
+      "id": "ordinary-evening",
+      "text": "Сегодня вечером где-то к 7 вечера пара по схемату есть",
+      "expected": "create_event",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "function_call": {
+                "name": "create_event",
+                "arguments": {
+                  "title": "Пара по схемату",
+                  "when_text": "сегодня вечером где-то к 7 вечера"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quoted-task",
+      "text": "> Добавь задачу сдать отчёт к 12 ноября.",
+      "expected": "create_task",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "function_call": {
+                "name": "create_task",
+                "arguments": {
+                  "due_text": "к 12 ноября",
+                  "title": "сдать отчёт"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-target",
+      "text": "Перенеси лабу на пятницу",
+      "expected": "ask_user",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "function_call": {
+                "name": "ask_user",
+                "arguments": {
+                  "question": "Какую лабу перенести — по вычислениям (10 ноября) или по сетям (11 ноября)?"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "work-not-deadline",
+      "text": "Завтра в 15:00 час поработать над отчётом, срок сдачи не меняй",
+      "expected": "plan_work",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "function_call": {
+                "name": "plan_work",
+                "arguments": {
+                  "duration_minutes": 60,
+                  "target_id": "report",
+                  "when_text": "завтра в 15:00"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "focused-completion",
+      "text": "Её я уже сдал",
+      "expected": "complete_task",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "function_call": {
+                "name": "complete_task",
+                "arguments": {
+                  "target_id": "report"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "weekly-view",
+      "text": "Покажи план на неделю",
+      "expected": "list_items",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "function_call": {
+                "name": "list_items",
+                "arguments": {
+                  "scope": "week"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

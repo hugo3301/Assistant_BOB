@@ -11,7 +11,10 @@ export class ControlObject extends DurableObject{
   const path=new URL(request.url).pathname,data=request.method==='POST'?await request.json():{};
   try{
    this.providers??=new ProviderLedger(this.control,{gigachatCap:this.env.GIGACHAT_TOKEN_CAP});
-   if(path==='/provider/reserve'){requireThat(providerAvailability(this.env)[data.provider]===true,'PROVIDER_DISABLED','Провайдер не подключён.');return Response.json({id:this.providers.reserve(data.owner,data.provider,data.amount)});}
+   if(path==='/provider/reserve'){requireThat(providerAvailability(this.env,data.owner)[data.provider]===true,'PROVIDER_DISABLED','Провайдер не подключён.');return Response.json({id:this.providers.reserve(data.owner,data.provider,data.amount)});}
+   if(path==='/provider/probe-reserve'){requireThat(data.owner===String(this.env.TELEGRAM_OWNER_ID)&&providerAvailability(this.env,data.owner).gigachat,'PROVIDER_DISABLED','Проверка недоступна.');return Response.json(this.providers.reserveProbe(data.owner,data.amount));}
+   if(path==='/provider/probe-settle'){this.providers.settleProbe(data.owner,data.id,data.observed);return Response.json({ok:true});}
+   if(path==='/provider/claim'){requireThat(Number.isFinite(data.amount)&&data.amount>0,'PROVIDER_REQUEST','Не указан объём запроса.');return Response.json(this.providers.claim(data.id,data.hash,owner=>providerAvailability(this.env,owner).gigachat,data.amount));}
    if(path==='/provider/settle'){this.providers.settle(data.owner,data.id,data.observed);return Response.json({ok:true});}
    if(path==='/provider/usage'){requireThat(this.control.active(data.owner),'ACCESS','Нет доступа.');return Response.json(this.providers.usage(data.owner,data.provider));}
    if(path==='/access')return Response.json(this.control.access(data.owner,data));
