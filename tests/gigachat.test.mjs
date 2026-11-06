@@ -7,9 +7,9 @@ import {ControlStore} from '../src/control.mjs';
 import {ProviderLedger} from '../src/provider-ledger.mjs';
 import {providerAvailability} from '../src/provider-settings.mjs';
 const key='synthetic-giga-authorization-key';
-const action={name:'create_task',arguments_json:JSON.stringify({title:'Отчёт',due_text:'12 ноября'})};
-const message={role:'assistant',function_call:{name:'propose_actions',arguments:{actions:[action]}}};
-const result=(usage={total_tokens:123,prompt_tokens:100,completion_tokens:23})=>Response.json({choices:[{finish_reason:'function_call',message}],usage});
+const action={name:'create_task',arguments:{title:'Отчёт',due_text:'12 ноября'}};
+const message={role:'assistant',content:[{function_call:action}]};
+const result=(usage={total_tokens:123,input_tokens:100,output_tokens:23})=>Response.json({messages:[message],finish_reason:'function_call',usage});
 const budget=()=>({reserved:[],settled:[],async reserve(n){this.reserved.push(n);return 'r';},async settle(...args){this.settled.push(args);}});
 
 test('Giga OAuth uses fixed endpoint, PERS scope, refresh margin and single-flight memory cache',async()=>{
@@ -21,15 +21,17 @@ test('Giga OAuth rejects untrusted TLS and hides response or authorization detai
  const cache=new GigaTokenCache({authKey:key,fetcher:async()=>{throw Error('certificate '+key);}});await assert.rejects(cache.get(),e=>e.code==='PROVIDER_AUTH'&&!e.message.includes(key));
  cache.fetcher=async()=>Response.json({access_token:'synthetic-access-token-long',expires_at:1});await assert.rejects(cache.get(),e=>e.code==='PROVIDER_AUTH');
 });
-test('Giga dispatcher still passes through application tool schema and rejects chat or arbitrary functions',()=>{
- assert.equal(decodeCalls(gigaMessage(message))[0].name,'create_task');
- for(const bad of [{name:'reply_user',arguments_json:'{"answer":"ok"}'},{name:'run_shell',arguments_json:'{}'}])assert.throws(()=>gigaMessage({function_call:{name:'propose_actions',arguments:{actions:[bad]}}}),e=>e.code==='GIGACHAT_ACTIONS');
- assert.throws(()=>decodeCalls(gigaMessage({function_call:{name:'propose_actions',arguments:{actions:[{...action,arguments_json:'{"title":"Отчёт","unknown":true}'}]}}})),e=>e.code==='UNKNOWN_ARGUMENT');
- assert.throws(()=>gigaMessage({content:'Я добавил задачу'}),e=>e.code==='GIGACHAT_ACTIONS');
- assert.throws(()=>gigaMessage({function_call:{name:'propose_actions',arguments:{actions:Array(6).fill(action)}}}),e=>e.code==='GIGACHAT_ACTIONS');
+test('Giga V2 native actions pass the existing schema, reject unknown tools, mixed questions and extra fields',()=>{
+ assert.equal(decodeCalls(gigaMessage([message]))[0].name,'create_task');
+ for(const name of ['reply_user','run_shell'])assert.throws(()=>gigaMessage([{role:'assistant',content:[{function_call:{name,arguments:{}}}]}]),e=>e.code==='GIGACHAT_ACTIONS');
+ assert.throws(()=>decodeCalls(gigaMessage([{role:'assistant',content:[{function_call:{...action,arguments:{title:'Отчёт',unknown:true}}}]}])),e=>e.code==='UNKNOWN_ARGUMENT');
+ assert.throws(()=>gigaMessage([{role:'assistant',content:[{text:'Я добавил задачу'}]}]),e=>e.code==='GIGACHAT_ACTIONS');
+ assert.throws(()=>gigaMessage(Array(6).fill(message)),e=>e.code==='GIGACHAT_ACTIONS');
+ const ask={role:'assistant',content:[{function_call:{name:'ask_user',arguments:{question:'Какая лаба?'}}}]};assert.throws(()=>decodeCalls(gigaMessage([message,ask])),e=>e.code==='MIXED_QUESTION');
+ assert.equal(decodeCalls(gigaMessage([message,message])).length,2);
 });
 test('Giga native function request meters actual tokens and excludes other provider credentials',async()=>{
- const meter=budget();const client=new GigaChat({budget:meter,tokens:{get:async()=> 'synthetic-access'},fetcher:async(url,init)=>{assert.equal(url,'https://api.giga.chat/v1/chat/completions');assert.equal(init.headers.Authorization,'Bearer synthetic-access');assert.equal(init.redirect,'manual');const body=JSON.parse(init.body);assert.equal(body.model,'GigaChat-2');assert.equal(body.function_call.name,'propose_actions');assert.equal(body.functions.length,1);assert.equal(body.functions[0].parameters.properties.actions.items.properties.name.enum.includes('reply_user'),false);assert.equal(body.messages.some(x=>x.content.includes(key)),false);return result();}});
+ const meter=budget();const client=new GigaChat({budget:meter,tokens:{get:async()=> 'synthetic-access'},fetcher:async(url,init)=>{assert.equal(url,'https://api.giga.chat/v2/chat/completions');assert.equal(init.headers.Authorization,'Bearer synthetic-access');assert.equal(init.redirect,'manual');const body=JSON.parse(init.body);assert.equal(body.model,'GigaChat-3-Ultra');assert.equal(body.model_options.parallel_tool_calls,true);assert.equal(body.tools[0].functions.specifications.length,9);assert.equal(body.tools[0].functions.specifications.some(tool=>tool.name==='reply_user'),false);assert.equal(JSON.stringify(body.messages).includes(key),false);return result();}});
  const response=await client.complete({context:{today:'2026-11-06'},text:'Добавь отчёт к 12 ноября'});assert.equal(decodeCalls(response.message)[0].args.title,'Отчёт');assert.equal(response.usage.tokens,123);assert.ok(meter.reserved[0]>1000);assert.deepEqual(meter.settled,[['r',123]]);
 });
 test('Giga token refresh retries only one unauthorized call, quota failure never falls back',async()=>{
@@ -37,7 +39,7 @@ test('Giga token refresh retries only one unauthorized call, quota failure never
  client.fetcher=async()=>{calls++;return new Response('private provider output',{status:429});};await assert.rejects(client.complete({context:{},text:'Покажи дела'}),e=>e.code==='PROVIDER_QUOTA'&&!e.message.includes('private'));assert.equal(calls,3);assert.deepEqual(meter.settled.at(-1),['r',null]);
 });
 test('Giga malformed response still settles, missing usage conservatively charges reservation',async()=>{
- const meter=budget(),client=new GigaChat({budget:meter,tokens:{get:async()=> 'synthetic-access'},fetcher:async()=>result(null)});await client.complete({context:{},text:'Добавь отчёт'});assert.deepEqual(meter.settled,[['r',null]]);client.fetcher=async()=>Response.json({choices:[{finish_reason:'length',message}],usage:{total_tokens:44}});await assert.rejects(client.complete({context:{},text:'Добавь отчёт'}),e=>e.code==='AI_RESPONSE');assert.deepEqual(meter.settled.at(-1),['r',44]);
+ const meter=budget(),client=new GigaChat({budget:meter,tokens:{get:async()=> 'synthetic-access'},fetcher:async()=>result(null)});await client.complete({context:{},text:'Добавь отчёт'});assert.deepEqual(meter.settled,[['r',null]]);client.fetcher=async()=>Response.json({messages:[message],finish_reason:'length',usage:{total_tokens:44}});await assert.rejects(client.complete({context:{},text:'Добавь отчёт'}),e=>e.code==='AI_RESPONSE');assert.deepEqual(meter.settled.at(-1),['r',44]);
 });
 test('Giga quota refusal and unrelated conversation do not send data to any API',async()=>{
  let calls=0;const client=new GigaChat({budget:{reserve:async()=>{throw Error('limit');}},tokens:{get:async()=>{calls++;}},fetcher:async()=>{calls++;}});await assert.rejects(client.complete({context:{},text:'Добавь отчёт'}));await assert.rejects(client.complete({context:{},text:'Рецепт',conversation:true}),e=>e.code==='GIGACHAT_SCOPE');assert.equal(calls,0);
