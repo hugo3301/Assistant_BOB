@@ -23,7 +23,7 @@ export class BotUI{
   if(this.profile(owner)?.onboarding)return this.zones(owner,true);
   const user=this.store.user(owner),today=selectItems(this.store,owner,'today',this.clock()),next=today.find(item=>item.kind!=='task'&&item.at>this.clock()),preferences=this.preferences(owner);
   return this.framed(owner,'home',screen('BOB · всё важное под рукой',{meta:zoneLabel(user.timezone,this.clock()),sections:[today.length?`На сегодня ${today.length} ${plural(today.length)}${next?`\nБлижайшее · ${localClock(next.at,user.timezone)} · ${truncate(displayTitle(next.title),45)}`:''}`:'На сегодня дел нет. Можно спокойно посмотреть планы на неделю.',preferences.project?`Новые дела → проект «${preferences.project}»`:'Напиши просьбу или отправь голосовое — я запишу дело и напомню.']}),()=>[
-   [nav('📅 '+UI.today,'today'),nav('📆 '+UI.week,'week')],[nav(UI.ahead,'ahead'),nav(UI.projects,'projects')],[nav('＋ Добавить дело','add'),nav('Расписание','calendar')],[nav(UI.settings,'settings'),nav(UI.help,'help')],...(this.admin?[[uiButton('Пригласить друга','a|invite'),uiButton('Участники','a|members')]]:[])
+   [nav('📅 '+UI.today,'today'),nav('📆 '+UI.week,'week')],[nav(UI.ahead,'ahead'),nav(UI.projects,'projects')],[nav('＋ Добавить дело','add'),nav('Расписание','calendar')],[nav(UI.settings,'settings'),nav(UI.help,'help')],[uiButton('Поделиться ботом','a|invite'),...(this.admin?[uiButton('Участники','a|members')]:[])]
   ]);
  }
  list(owner,filter,page=0,snapshot=null){

@@ -4,14 +4,18 @@ import {requireThat} from './errors.mjs';
 export const FREE_POLICY=Object.freeze({users:10,total:9000,person:800,voiceSeconds:120,voiceBytes:2000000});
 const hash=code=>createHash('sha256').update(code).digest('hex');
 export class ControlStore{
- constructor(db,{admin,clock=()=>new Date().toISOString(),mode='invite',total=FREE_POLICY.total,person=FREE_POLICY.person,maxUsers=FREE_POLICY.users}={}){
-  this.db=db;this.admin=admin;this.clock=clock;this.mode=mode;this.total=total;this.person=person;this.maxUsers=maxUsers;
+ constructor(db,{admin,clock=()=>new Date().toISOString(),mode='invite',total=FREE_POLICY.total,person=FREE_POLICY.person,maxUsers=mode==='open'?null:FREE_POLICY.users,inboundLimit=30}={}){
+  this.db=db;this.admin=admin;this.clock=clock;this.mode=mode;this.total=total;this.person=person;this.maxUsers=maxUsers;this.inboundLimit=Math.max(1,Math.min(200,Number(inboundLimit)||30));
   db.exec(`CREATE TABLE IF NOT EXISTS members(id TEXT PRIMARY KEY,label TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,joined_at TEXT NOT NULL,next_wake TEXT);
    CREATE TABLE IF NOT EXISTS invitations(hash TEXT PRIMARY KEY,label TEXT NOT NULL,expires_at TEXT NOT NULL,used_by TEXT,code TEXT NOT NULL,request_id TEXT UNIQUE);
    CREATE TABLE IF NOT EXISTS shared_days(day TEXT PRIMARY KEY,external REAL NOT NULL DEFAULT 0);
    CREATE TABLE IF NOT EXISTS member_usage(day TEXT NOT NULL,member TEXT NOT NULL,spent REAL NOT NULL DEFAULT 0,reserved REAL NOT NULL DEFAULT 0,calls INTEGER NOT NULL DEFAULT 0,voice_seconds REAL NOT NULL DEFAULT 0,PRIMARY KEY(day,member));
    CREATE TABLE IF NOT EXISTS shared_reservations(id TEXT PRIMARY KEY,member TEXT NOT NULL,day TEXT NOT NULL,amount REAL NOT NULL,kind TEXT NOT NULL,seconds REAL NOT NULL,created_at TEXT NOT NULL,settled INTEGER NOT NULL DEFAULT 0);
-   CREATE TABLE IF NOT EXISTS access_notice(member TEXT PRIMARY KEY,sent_at TEXT NOT NULL);`);
+   CREATE TABLE IF NOT EXISTS access_notice(member TEXT PRIMARY KEY,sent_at TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS inbound_limits(member TEXT PRIMARY KEY,window TEXT NOT NULL,requests INTEGER NOT NULL,voices INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS inbound_receipts(member TEXT NOT NULL,event_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(member,event_id));
+   CREATE INDEX IF NOT EXISTS inbound_receipts_created ON inbound_receipts(created_at);
+   CREATE INDEX IF NOT EXISTS members_wake ON members(active,next_wake);`);
   db.prepare('INSERT OR IGNORE INTO members(id,label,joined_at) VALUES (?,?,?)').run(admin,'Владелец',clock());
  }
  transaction(fn){return this.db.transaction(fn);}
@@ -22,16 +26,17 @@ export class ControlStore{
   return this.transaction(()=>{
    if(this.active(id))return{allowed:true};
    if(this.member(id))return{allowed:false,reason:'revoked'};
-   if(!start)return{allowed:false,reason:'invite'};
+   if(!start)return{allowed:false,reason:this.mode==='open'?'start':'invite'};
    const invite=code?this.db.prepare('SELECT * FROM invitations WHERE hash=?').get(hash(code)):null;
    if(this.mode!=='open'&&(!invite||invite.expires_at<=this.clock()||invite.used_by&&invite.used_by!==id))return{allowed:false,reason:'invite'};
-   if(this.db.prepare('SELECT COUNT(*) AS count FROM members WHERE active=1').get().count>=this.maxUsers)return{allowed:false,reason:'full'};
+   if(this.maxUsers!==null&&this.db.prepare('SELECT COUNT(*) AS count FROM members WHERE active=1').get().count>=this.maxUsers)return{allowed:false,reason:'full'};
    this.db.prepare('INSERT INTO members(id,label,joined_at) VALUES (?,?,?)').run(id,String(label).replace(/[\r\n\u0000-\u001f]/gu,' ').slice(0,80)||'Участник',this.clock());
-   if(invite)this.db.prepare('UPDATE invitations SET used_by=? WHERE hash=?').run(id,invite.hash);
+   if(invite&&!invite.used_by&&invite.expires_at>this.clock())this.db.prepare('UPDATE invitations SET used_by=? WHERE hash=?').run(id,invite.hash);
    return{allowed:true,joined:true};
   });
  }
  invite(caller,label='Друг',requestId=null){
+  if(this.mode==='open'){requireThat(this.active(caller),'ACCESS','Сначала нажми /start.');return{url:'https://t.me/mybob_robot',public:true};}
   requireThat(caller===this.admin,'ADMIN_ONLY','Приглашать может владелец бота.');
   return this.transaction(()=>{const previous=requestId?this.db.prepare('SELECT code,expires_at FROM invitations WHERE request_id=?').get(requestId):null;if(previous)return{url:`https://t.me/mybob_robot?start=join_${previous.code}`,expires:previous.expires_at};const active=this.db.prepare('SELECT COUNT(*) AS count FROM members WHERE active=1').get().count,pending=this.db.prepare('SELECT COUNT(*) AS count FROM invitations WHERE used_by IS NULL AND expires_at>?').get(this.clock()).count;
    requireThat(active+pending<this.maxUsers,'MEMBERS_FULL','Все места уже заняты или зарезервированы приглашениями. В альфе доступно 10 мест вместе с владельцем.');
@@ -53,7 +58,8 @@ export class ControlStore{
  settleSync(member,id,observed){const row=this.db.prepare('SELECT * FROM shared_reservations WHERE id=? AND member=?').get(id,member);if(!row||row.settled)return;const spent=Number.isFinite(observed)&&observed>=0?observed:row.amount;this.db.prepare('UPDATE member_usage SET reserved=MAX(0,reserved-?),spent=spent+?,calls=calls+?,voice_seconds=voice_seconds+? WHERE day=? AND member=?').run(row.amount,spent,row.kind==='llm'?1:0,row.seconds,row.day,member);this.db.prepare('UPDATE shared_reservations SET settled=1 WHERE id=?').run(id);}
  reap(){for(const row of this.db.prepare('SELECT * FROM shared_reservations WHERE settled=0 AND created_at<?').all(new Date(Date.parse(this.clock())-180000).toISOString()))this.settleSync(row.member,row.id,null);this.db.prepare('DELETE FROM shared_reservations WHERE settled=1 AND created_at<?').run(new Date(Date.parse(this.clock())-3*86400000).toISOString());}
  usage(member=null){const day=this.clock().slice(0,10);if(member){const row=this.db.prepare('SELECT spent,reserved,calls,voice_seconds FROM member_usage WHERE day=? AND member=?').get(day,member);return{day,spent:0,reserved:0,calls:0,voice_seconds:0,...row,limit:this.person};}const row=this.db.prepare('SELECT COALESCE(SUM(spent),0) AS spent,COALESCE(SUM(reserved),0) AS reserved FROM member_usage WHERE day=?').get(day),external=this.db.prepare('SELECT external FROM shared_days WHERE day=?').get(day)?.external??0;return{day,spent:row.spent+external,reserved:row.reserved,limit:this.total};}
- overview(){return{usage:this.usage(),members:this.db.prepare('SELECT id,label,active,joined_at FROM members ORDER BY joined_at,id').all(),pendingInvites:this.db.prepare('SELECT COUNT(*) AS count FROM invitations WHERE used_by IS NULL AND expires_at>?').get(this.clock()).count,capacity:this.maxUsers,mode:this.mode};}
+ allowRequest(member,{voice=false,eventId=null}={}){requireThat(this.active(member),'ACCESS','Доступ отключён.');return this.transaction(()=>{this.db.prepare('DELETE FROM inbound_receipts WHERE created_at<?').run(new Date(Date.parse(this.clock())-600000).toISOString());if(eventId!==null&&this.db.prepare('SELECT 1 FROM inbound_receipts WHERE member=? AND event_id=?').get(member,String(eventId)))return true;const window=this.clock().slice(0,16),row=this.db.prepare('SELECT * FROM inbound_limits WHERE member=?').get(member),current=row?.window===window?row:{requests:0,voices:0};if(current.requests>=this.inboundLimit||voice&&current.voices>=2)return false;this.db.prepare('INSERT INTO inbound_limits VALUES (?,?,?,?) ON CONFLICT(member) DO UPDATE SET window=excluded.window,requests=excluded.requests,voices=excluded.voices').run(member,window,current.requests+1,current.voices+(voice?1:0));if(eventId!==null)this.db.prepare('INSERT INTO inbound_receipts VALUES (?,?,?)').run(member,String(eventId),this.clock());return true;});}
+ overview(){return{usage:this.usage(),members:this.db.prepare('SELECT id,label,active,joined_at FROM members ORDER BY active DESC,joined_at,id LIMIT 50').all(),activeCount:this.db.prepare('SELECT COUNT(*) AS count FROM members WHERE active=1').get().count,memberCount:this.db.prepare('SELECT COUNT(*) AS count FROM members').get().count,pendingInvites:this.db.prepare('SELECT COUNT(*) AS count FROM invitations WHERE used_by IS NULL AND expires_at>?').get(this.clock()).count,capacity:this.maxUsers,mode:this.mode};}
  schedule(member,at){requireThat(this.active(member)&&Number.isFinite(Date.parse(at)),'ACCESS','Пользователь недоступен.');this.db.prepare('UPDATE members SET next_wake=? WHERE id=?').run(at,member);}
- due(){return this.db.prepare('SELECT id FROM members WHERE active=1 AND (next_wake IS NULL OR next_wake<=?)').all(new Date(Date.parse(this.clock())+10000).toISOString()).map(row=>row.id);}
+ due(){return this.db.prepare('SELECT id FROM members WHERE active=1 AND (next_wake IS NULL OR next_wake<=?) ORDER BY next_wake,id LIMIT 20').all(new Date(Date.parse(this.clock())+10000).toISOString()).map(row=>row.id);}
 }
