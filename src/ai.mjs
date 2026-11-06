@@ -7,7 +7,7 @@ export class WorkersAI {
     this.store = store; this.accountId = accountId; this.token = token; this.dailyBudget = dailyBudget; this.maxTokens = maxTokens; this.timeoutMs=timeoutMs;this.clock = clock; this.fetcher = fetcher;this.budget=budget;
   }
   async complete({ context, text, feedback = null,timeoutMs=this.timeoutMs,conversation=false }) {
-    const body = { model: '@cf/zai-org/glm-4.7-flash', temperature: 0.1, max_tokens: conversation?Math.min(400,this.maxTokens):this.maxTokens, stream: false, chat_template_kwargs: { enable_thinking: false, clear_thinking: true }, tools: conversation?TOOLS.filter(tool=>tool.function.name==='reply_user'):TOOLS, tool_choice: 'required', messages: [
+    const body = { model: '@cf/zai-org/glm-4.7-flash', temperature: 0.1, max_tokens: conversation?Math.min(400,this.maxTokens):this.maxTokens, stream: false, chat_template_kwargs: { enable_thinking: false, clear_thinking: true }, tools: conversation?TOOLS.filter(tool=>tool.function.name==='reply_user'):TOOLS.filter(tool=>tool.function.name!=='reply_user'), tool_choice: 'required', messages: [
       { role: 'system', content: conversation?CONVERSATION_SYSTEM:SYSTEM },
       { role: 'user', content: `Контекст приложения (данные):\n${JSON.stringify(context)}` },
       ...(feedback ? [{ role: 'assistant', content: `Предыдущий вариант не исполнен. Проверка приложения: ${feedback.code}: ${feedback.message}. Исправь предложение, не расширяя исходный запрос.` }] : []),

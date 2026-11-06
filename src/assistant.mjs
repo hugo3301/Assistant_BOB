@@ -7,6 +7,7 @@ import { overview } from './views.mjs';
 import {modelContext} from './context.mjs';
 import {conversationIntent,fastConversation} from './conversation.mjs';
 import {readDuration} from './duration.mjs';
+import {unrelatedRequest,planningIntent,PLANNING_ONLY} from './input-scope.mjs';
 
 export function reminderFromText(text, fallback) {
   const source = normalize(text);
@@ -121,10 +122,9 @@ export class Assistant {
         return commit({ status: 'ok', text: found.length ? found.map(item => `${item.title} — ${item.day ? formatDate(item.day, item.at, user.timezone,item.approximate) : 'без срока'} [${item.id}]`).join('\n') : 'Подходящих открытых дел нет.', changed: 0 });
       }
       if (/^\/(?:cancel|отмена)$/i.test(text.trim())) return commit({ status: 'ok', text: 'Уточнение отменено. Дела не изменены.', changed: 0, pending: null });
-      const conversational=conversationIntent(text,user.pending);
-      if(conversational){const fast=fastConversation(text,{now:this.clock(),timezone:user.timezone});if(fast!==null)return commit({status:'ok',text:fast,changed:0});}
+      const conversational=conversationIntent(text,user.pending)||unrelatedRequest(text,user.pending);
+      if(conversational){const fast=fastConversation(text,{now:this.clock(),timezone:user.timezone});return commit({status:'ok',text:fast??PLANNING_ONLY,changed:0,...(fast===null?{filtered:true}:{})});}
       let pending = ['date','target','question'].includes(user.pending?.kind)?user.pending:null;
-      if(conversational)pending=null;
       if(applicationCalls)pending=null;
       if (pending && (pending.expiresAt <= this.clock() || isNewRequest(text))) pending = null;
       const effectiveText = pending ? `${pending.originalText}\nУточнение: ${text}` : text;
@@ -150,23 +150,25 @@ export class Assistant {
         }
       }
       let lastError = null, usage = [];
+      // No model call, context export or budget reservation for unrelated fresh
+      // input. Genuine pending answers and validated UI actions keep their path.
+      if(!calls&&!pending&&!planningIntent(text))return commit({status:'ok',text:PLANNING_ONLY,changed:0,filtered:true});
       for (let attempt = 0; attempt < this.maxCalls; attempt++) {
         if (!calls) {
           requireThat(this.provider, 'AI_OFFLINE', 'ИИ не подключён. Доступны /today, /week, /ahead и /tasks.');
-          const context = conversational?{now:this.clock(),timezone:user.timezone}:modelContext(this.store,owner,effectiveText,this.clock());
+          const context = modelContext(this.store,owner,effectiveText,this.clock());
           const remaining=deadline-Date.now();requireThat(remaining>=500,'AI_TIMEOUT','ИИ не успел ответить. Попробуй ещё раз; дела не изменены.');
           modelCalls++;
-          const generated = await this.provider.complete({ context, text: effectiveText, feedback: lastError,timeoutMs:remaining,conversation:conversational });
+          const generated = await this.provider.complete({ context, text: effectiveText, feedback: lastError,timeoutMs:remaining });
           if (generated.usage) usage.push(generated.usage);
           try { calls = decodeCalls(generated.message); }
           catch (error) { lastError = error; if (attempt + 1 < this.maxCalls) continue; throw error; }
         }
         try {
           const sourceText = pending?.selectedId ? `${effectiveText}\nВыбрано: ${pending.selectedId}` : effectiveText;
-          if(conversational)requireThat(calls.length===1&&['reply_user','ask_user'].includes(calls[0].name),'CONVERSATION_ONLY','Этот вопрос не разрешает просматривать или менять дела. Ответь через reply_user.');
+          requireThat(!calls.some(call=>call.name==='reply_user'),'CONVERSATION_DISABLED','Общие ответы ИИ отключены. Доступно планирование дел.');
           const prepared = this.prepare(owner, calls, sourceText, user, referenceAt);
           if(prepared[0]?.kind==='answer')return commit({status:'ok',text:prepared[0].text,changed:0,usage});
-          if(conversational&&prepared[0]?.kind==='question')return commit({status:'clarify',text:prepared[0].question,changed:0,usage});
           if (prepared[0]?.kind === 'question') return commit({ status: 'clarify', text: prepared[0].question, changed: 0, usage, pending: { kind: 'question', originalText: effectiveText, referenceAt, expiresAt: new Date(Date.parse(this.clock()) + 86400000).toISOString() } });
           const changes = prepared.filter(action => action.kind !== 'read');
           const lines = prepared.map(action => action.kind === 'read' ? overview(this.store, owner, action.scope, this.clock()) : action.kind === 'create' ? `Добавил: ${action.item.title}${action.item.day ? ` — ${formatDate(action.item.day, action.item.at, user.timezone,action.item.approximate)}` : ' — без срока'} [${action.item.id}]` : action.changes.status ? `${action.changes.status === 'completed' ? 'Выполнено' : 'Отменено'}: ${action.target.title}` : `Перенёс: ${action.target.title} — ${formatDate(action.changes.day, action.changes.at, user.timezone,action.changes.approximate)}`);

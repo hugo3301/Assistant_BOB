@@ -153,7 +153,7 @@ test("independent questions preserve date/target/UI/calendar/bulk clarification 
     f.store.close();
   }
 });
-test("a general question gets an answer without task context or changing the pending operation", async () => {
+test("a general question is filtered without a model or changing the pending operation", async () => {
   const f = fixture([
     [
       call("reply_user", {
@@ -173,13 +173,9 @@ test("a general question gets an answer without task context or changing the pen
       .run(JSON.stringify(pending), "alice");
     const result = await f.run("Что такое рекурсия?");
     assert.equal(result.changed, 0);
-    assert.match(result.text, /функция/);
-    assert.equal(f.inputs[0].conversation, true);
-    assert.deepEqual(Object.keys(f.inputs[0].context).sort(), [
-      "now",
-      "timezone",
-    ]);
-    assert.equal(f.inputs[0].text, "Что такое рекурсия?");
+    assert.equal(result.filtered, true);
+    assert.equal(result.modelCalls, 0);
+    assert.equal(f.inputs.length, 0);
     assert.deepEqual(f.store.user("alice").pending, pending);
   } finally {
     f.store.close();
@@ -195,7 +191,9 @@ test("a model cannot replace a general question with a read, a creation or an ac
     try {
       const response = await f.run("Что такое рекурсия?");
       assert.equal(response.changed, 0);
-      assert.equal(response.status, "error");
+      assert.equal(response.filtered, true);
+      assert.equal(response.modelCalls, 0);
+      assert.equal(f.inputs.length, 0);
       assert.equal(f.store.items("alice").length, 0);
       assert.doesNotMatch(response.text, /Сегодня:\n/);
     } finally {
@@ -211,7 +209,9 @@ test("unrecognized chatter cannot become a task or overview even outside the ded
   try {
     const result = await f.run("шушушу");
     assert.equal(result.changed, 0);
-    assert.equal(result.status, "error");
+    assert.equal(result.filtered, true);
+    assert.equal(result.modelCalls, 0);
+    assert.equal(f.inputs.length, 0);
     assert.equal(f.store.items("alice").length, 0);
   } finally {
     f.store.close();

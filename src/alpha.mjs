@@ -11,6 +11,7 @@ import {isNewRequest} from './policy.mjs';
 import {BulkActions} from './bulk-actions.mjs';
 import {quickAction} from './natural.mjs';
 import {conversationIntent} from './conversation.mjs';
+import {unrelatedRequest} from './input-scope.mjs';
 
 export const HELP = `Я BOB, твой личный помощник. Напиши: «Добавь задачу сдать отчёт к 12 ноября» или «Встреча завтра в 15:00, напомни за час». Следом можно: «Перенеси её на завтра в 16:00».
 
@@ -38,7 +39,7 @@ export class Alpha {
     requireThat(this.assistant.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Нет доступа.');
     this.store.ensureUser(owner);
     const input=this.store.user(owner).pending;
-    if(!skipUi&&!callback&&documentText===undefined&&!this.ui.profile(owner)?.onboarding&&conversationIntent(text,input)){const bulkAnswer=await this.bulk.handle(owner,text,{requestId,requestText});if(bulkAnswer)return bulkAnswer;return this.assistant.handle(owner,text,{requestId,requestText:requestText??text});}
+    if(!skipUi&&!callback&&documentText===undefined&&!this.ui.profile(owner)?.onboarding&&(conversationIntent(text,input)||unrelatedRequest(text,input))){const bulkAnswer=await this.bulk.handle(owner,text,{requestId,requestText});if(bulkAnswer)return bulkAnswer;return this.assistant.handle(owner,text,{requestId,requestText:requestText??text});}
     if(!skipUi&&!callback&&documentText===undefined&&input?.kind==='ui_input'&&input.expiresAt>this.clock()&&!isNewRequest(text)&&! /^(?:удали|убери|надо|нужно|сдать|перенеси)\s/iu.test(text)){
       try{let value=text.trim();if(input.field==='timezone'){value=friendlyZone(value);requireThat(value,'SETTING','Не узнал город. Можно выбрать его кнопкой или написать «UTC+5».');}if(input.field==='morning')value=morningInput(value,this.clock(),this.store.user(owner).timezone);if(input.field==='remind'){value=/^\d+$/u.test(value)?Number(value):reminderFromText('за '+value,null);requireThat(value!==null,'SETTING','Напиши, насколько заранее: например, «за полчаса» или «45 минут».');}
         return this.handle(owner,`/${input.field==='timezone'?'timezone':input.field} ${value}`,{requestId,requestText:requestText??text,skipUi:true,returnMarkup:{inline_keyboard:[[nav(input.field==='project'?'К проектам':input.field==='diet'?'Мой рацион':'К настройкам',input.field==='project'?'projects':input.field==='diet'?'diet':'settings'),nav(UI.home)]]}});

@@ -9,8 +9,8 @@ if (!process.argv.includes("--run")) {
     JSON.stringify({
       network: false,
       synthetic: true,
-      maximumModelCalls: 4,
-      maximumAccountedNeurons: 80,
+      maximumModelCalls: 0,
+      maximumAccountedNeurons: 0,
     }),
   );
   process.exit(0);
@@ -34,11 +34,14 @@ try {
   for (const [id, text] of [
     ["definition", "Что такое рекурсия?"],
     ["weather", "Какая погода сегодня?"],
+    ["recipe", "рецепт чизбургера"],
   ]) {
     const started = performance.now(),
       reply = await alpha.handle(owner, text, { requestId: id });
     assert.equal(reply.status, "ok", reply.code);
     assert.equal(reply.changed, 0);
+    assert.equal(reply.filtered, true);
+    assert.equal(reply.modelCalls, 0);
     assert.equal(store.items(owner).length, 0);
     console.log(
       JSON.stringify({
@@ -50,6 +53,7 @@ try {
       }),
     );
   }
+  assert.equal(store.usage(new Date().toISOString().slice(0, 10)).spent, 0);
   console.log(
     JSON.stringify({
       passed: true,

@@ -18,7 +18,7 @@ test('AI timeout aborts the request, settles its reservation and leaves items in
  }finally{store.close();}
 });
 test('a corrective model pass receives only the remaining turn deadline',async()=>{
- const store=new Store();try{const budgets=[],provider={complete:async({timeoutMs})=>{budgets.push(timeoutMs);await new Promise(resolve=>setTimeout(resolve,30));return{message:{content:'bad response'}};}};const assistant=new Assistant(store,{provider,allowedOwners:['alice'],clock:()=>NOW,timeBudgetMs:2000});const response=await assistant.handle('alice','сложная просьба',{requestId:'correction'});assert.equal(response.modelCalls,2);assert.ok(budgets[1]<budgets[0]-10);assert.equal(store.items('alice').length,0);
+ const store=new Store();try{const budgets=[],provider={complete:async({timeoutMs})=>{budgets.push(timeoutMs);await new Promise(resolve=>setTimeout(resolve,30));return{message:{content:'bad response'}};}};const assistant=new Assistant(store,{provider,allowedOwners:['alice'],clock:()=>NOW,timeBudgetMs:2000});const response=await assistant.handle('alice','Помоги распланировать работу над отчётом',{requestId:'correction'});assert.equal(response.modelCalls,2);assert.ok(budgets[1]<budgets[0]-10);assert.equal(store.items('alice').length,0);
  }finally{store.close();}
 });
 test('a deleted or uneditable Telegram message falls back to a fresh message',async()=>{
