@@ -3,11 +3,16 @@ import {ControlStore} from './control.mjs';
 import {cloudDatabase} from './cloud-store.mjs';
 import {callUser} from './routing.mjs';
 import {BobError,requireThat} from './errors.mjs';
+import {ProviderLedger} from './provider-ledger.mjs';
 export class ControlObject extends DurableObject{
  constructor(ctx,env){super(ctx,env);this.env=env;this.control=new ControlStore(cloudDatabase(ctx.storage),{admin:String(env.TELEGRAM_OWNER_ID),mode:env.ALPHA_ACCESS_MODE==='open'?'open':'invite',inboundLimit:env.INBOUND_REQUESTS_PER_MINUTE});if(env.AI_BUDGET_SEED_DAY===new Date().toISOString().slice(0,10))this.control.seed(env.AI_BUDGET_SEED_DAY,Number(env.AI_BUDGET_SEED_NEURONS)||0);}
  async fetch(request){
   const path=new URL(request.url).pathname,data=request.method==='POST'?await request.json():{};
   try{
+   this.providers??=new ProviderLedger(this.control,{gigachatCap:this.env.GIGACHAT_TOKEN_CAP});
+   if(path==='/provider/reserve'){requireThat(data.provider==='groq'&&this.env.GROQ_ENABLED==='true'&&this.env.GROQ_FREE_CONFIRMED==='true'&&Boolean(this.env.GROQ_API_KEY),'PROVIDER_DISABLED','Провайдер не подключён.');return Response.json({id:this.providers.reserve(data.owner,data.provider,data.amount)});}
+   if(path==='/provider/settle'){this.providers.settle(data.owner,data.id,data.observed);return Response.json({ok:true});}
+   if(path==='/provider/usage'){requireThat(this.control.active(data.owner),'ACCESS','Нет доступа.');return Response.json(this.providers.usage(data.owner,data.provider));}
    if(path==='/access')return Response.json(this.control.access(data.owner,data));
    if(path==='/notice')return Response.json({send:this.control.notice(data.owner)});
    if(path==='/admit')return Response.json({allowed:this.control.allowRequest(data.owner,data)});

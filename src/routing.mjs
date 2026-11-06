@@ -8,3 +8,9 @@ export class SharedBudget{
  async settle(id,observed){await callControl(this.env,'/settle',{owner:this.owner,id,observed});}
  usage(){return callControl(this.env,'/usage',{owner:this.owner});}
 }
+export class ProviderBudget{
+ constructor(env,owner,provider){Object.assign(this,{env,owner,provider});}
+ async reserve(amount){return(await callControl(this.env,'/provider/reserve',{owner:this.owner,provider:this.provider,amount})).id;}
+ async settle(id,observed){await callControl(this.env,'/provider/settle',{owner:this.owner,id,observed});}
+ usage(){return callControl(this.env,'/provider/usage',{owner:this.owner,provider:this.provider});}
+}

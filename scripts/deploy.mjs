@@ -9,7 +9,8 @@ for (const key of ['TELEGRAM_WEBHOOK_SECRET','ADMIN_SECRET']) if (!process.env[k
 writeFileSync(envPath,local);
 const secrets = {TELEGRAM_BOT_TOKEN:process.env.TELEGRAM_BOT_TOKEN,TELEGRAM_OWNER_ID:process.env.TELEGRAM_OWNER_ID,WORKERS_AI_TOKEN:process.env.CLOUDFLARE_API_TOKEN,TELEGRAM_WEBHOOK_SECRET:process.env.TELEGRAM_WEBHOOK_SECRET,ADMIN_SECRET:process.env.ADMIN_SECRET};
 if (Object.values(secrets).some(value=>!value)) throw Error('Missing runtime configuration');
-for(const key of ['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','CALENDAR_SECRET_KEY'])if(process.env[key])secrets[key]=process.env[key];
+for(const key of ['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','CALENDAR_SECRET_KEY','GROQ_API_KEY'])if(process.env[key])secrets[key]=process.env[key];
+secrets.GROQ_ENABLED=process.env.GROQ_ENABLED==='true'?'true':'false';secrets.GROQ_FREE_CONFIRMED=process.env.GROQ_FREE_CONFIRMED==='true'?'true':'false';
 mkdirSync('work',{recursive:true});const path=resolve('work/deploy-secrets.json');writeFileSync(path,JSON.stringify(secrets),{mode:0o600});
 const childEnv={...process.env,CLOUDFLARE_API_TOKEN:process.env.CLOUDFLARE_DEPLOY_TOKEN,XDG_CONFIG_HOME:resolve('work/config'),WRANGLER_LOG_PATH:resolve('work/wrangler-deploy.log'),WRANGLER_SEND_METRICS:'false',CI:'true'};
 try {
