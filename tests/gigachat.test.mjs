@@ -23,6 +23,7 @@ test('Giga OAuth rejects untrusted TLS and hides response or authorization detai
 });
 test('Giga V2 native actions pass the existing schema, reject unknown tools, mixed questions and extra fields',()=>{
  assert.equal(decodeCalls(gigaMessage([message]))[0].name,'create_task');
+ const withoutDate={role:'assistant',content:[{function_call:{name:'create_task',arguments:{title:'Разобрать фотографии',due_text:null}}}]};assert.equal(decodeCalls(gigaMessage([withoutDate]))[0].args.due_text,null);
  for(const name of ['reply_user','run_shell'])assert.throws(()=>gigaMessage([{role:'assistant',content:[{function_call:{name,arguments:{}}}]}]),e=>e.code==='GIGACHAT_ACTIONS');
  assert.throws(()=>decodeCalls(gigaMessage([{role:'assistant',content:[{function_call:{...action,arguments:{title:'Отчёт',unknown:true}}}]}])),e=>e.code==='UNKNOWN_ARGUMENT');
  assert.throws(()=>gigaMessage([{role:'assistant',content:[{text:'Я добавил задачу'}]}]),e=>e.code==='GIGACHAT_ACTIONS');

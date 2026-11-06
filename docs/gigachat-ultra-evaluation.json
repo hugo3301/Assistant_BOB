@@ -1,0 +1,261 @@
+{
+  "trial": "ultra-v2",
+  "revision": "8d3ed05bf8ad",
+  "provider": "gigachat",
+  "model": "GigaChat-3-Ultra",
+  "synthetic": true,
+  "productionWrites": false,
+  "telegramCalls": 0,
+  "maximumCalls": 18,
+  "maximumAccountedTokens": 100000,
+  "calls": 18,
+  "chargedTokens": 32451,
+  "entries": [
+    {
+      "id": "ordinary-evening",
+      "expected": "create_event",
+      "actual": [
+        "create_event"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "create"
+      ],
+      "tokens": 1663,
+      "inputTokens": 1596,
+      "outputTokens": 67,
+      "ms": 2127
+    },
+    {
+      "id": "quoted-task",
+      "expected": "create_task",
+      "passed": false,
+      "code": "EXPLICIT_DEADLINE_MISSING",
+      "ms": 772
+    },
+    {
+      "id": "ambiguous-target",
+      "expected": "ask_user",
+      "passed": false,
+      "code": "TARGET_AMBIGUOUS",
+      "ms": 774
+    },
+    {
+      "id": "work-not-deadline",
+      "expected": "plan_work",
+      "actual": [
+        "plan_work"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "create"
+      ],
+      "tokens": 1688,
+      "inputTokens": 1604,
+      "outputTokens": 84,
+      "ms": 887
+    },
+    {
+      "id": "focused-completion",
+      "expected": "complete_task",
+      "passed": false,
+      "code": "TARGET_MISMATCH",
+      "ms": 643
+    },
+    {
+      "id": "weekly-view",
+      "expected": "list_items",
+      "actual": [
+        "list_items"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "read"
+      ],
+      "tokens": 1627,
+      "inputTokens": 1588,
+      "outputTokens": 39,
+      "ms": 731
+    },
+    {
+      "id": "ordinary-evening",
+      "expected": "create_event",
+      "actual": [
+        "create_event"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "create"
+      ],
+      "tokens": 1863,
+      "inputTokens": 1796,
+      "outputTokens": 67,
+      "ms": 4826,
+      "revision": "73da76f306fe"
+    },
+    {
+      "id": "quoted-task",
+      "expected": "create_task",
+      "passed": false,
+      "code": "EXPLICIT_DEADLINE_MISSING",
+      "ms": 944,
+      "revision": "73da76f306fe"
+    },
+    {
+      "id": "ambiguous-target",
+      "expected": "ask_user",
+      "passed": false,
+      "code": "TARGET_AMBIGUOUS",
+      "ms": 1207,
+      "revision": "73da76f306fe"
+    },
+    {
+      "id": "work-not-deadline",
+      "expected": "plan_work",
+      "actual": [
+        "plan_work"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "create"
+      ],
+      "tokens": 1888,
+      "inputTokens": 1804,
+      "outputTokens": 84,
+      "ms": 1106,
+      "revision": "73da76f306fe"
+    },
+    {
+      "id": "focused-completion",
+      "expected": "complete_task",
+      "actual": [
+        "complete_task"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "change"
+      ],
+      "tokens": 1829,
+      "inputTokens": 1789,
+      "outputTokens": 40,
+      "ms": 1086,
+      "revision": "73da76f306fe"
+    },
+    {
+      "id": "weekly-view",
+      "expected": "list_items",
+      "actual": [
+        "list_items"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "read"
+      ],
+      "tokens": 1827,
+      "inputTokens": 1788,
+      "outputTokens": 39,
+      "ms": 866,
+      "revision": "73da76f306fe"
+    },
+    {
+      "id": "ordinary-evening",
+      "expected": "create_event",
+      "actual": [
+        "create_event"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "create"
+      ],
+      "tokens": 2006,
+      "inputTokens": 1939,
+      "outputTokens": 67,
+      "ms": 2534,
+      "revision": "8d3ed05bf8ad"
+    },
+    {
+      "id": "quoted-task",
+      "expected": "create_task",
+      "actual": [
+        "create_task"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "create"
+      ],
+      "tokens": 2000,
+      "inputTokens": 1938,
+      "outputTokens": 62,
+      "ms": 879,
+      "revision": "8d3ed05bf8ad"
+    },
+    {
+      "id": "ambiguous-target",
+      "expected": "ask_user",
+      "actual": [
+        "ask_user"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "question"
+      ],
+      "tokens": 1995,
+      "inputTokens": 1933,
+      "outputTokens": 62,
+      "ms": 1062,
+      "revision": "8d3ed05bf8ad"
+    },
+    {
+      "id": "work-not-deadline",
+      "expected": "plan_work",
+      "actual": [
+        "plan_work"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "create"
+      ],
+      "tokens": 2031,
+      "inputTokens": 1947,
+      "outputTokens": 84,
+      "ms": 1030,
+      "revision": "8d3ed05bf8ad"
+    },
+    {
+      "id": "focused-completion",
+      "expected": "complete_task",
+      "actual": [
+        "complete_task"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "change"
+      ],
+      "tokens": 1972,
+      "inputTokens": 1932,
+      "outputTokens": 40,
+      "ms": 731,
+      "revision": "8d3ed05bf8ad"
+    },
+    {
+      "id": "weekly-view",
+      "expected": "list_items",
+      "actual": [
+        "list_items"
+      ],
+      "passed": true,
+      "preparedKinds": [
+        "read"
+      ],
+      "tokens": 1458,
+      "inputTokens": 1419,
+      "outputTokens": 39,
+      "ms": 801,
+      "revision": "8d3ed05bf8ad"
+    }
+  ],
+  "passed": true,
+  "evaluatedDateTomsk": "2026-11-07",
+  "fixtureReferenceAt": "2026-11-06T02:00:00.000Z",
+  "limitations": "Six synthetic smoke scenarios; no statistical quality or Telegram latency guarantee. Initial revisions retained; only the final same-source revision passed all six."
+}
