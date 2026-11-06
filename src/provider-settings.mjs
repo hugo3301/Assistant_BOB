@@ -2,7 +2,7 @@ import {randomBytes} from 'node:crypto';
 import {requireThat,BobError} from './errors.mjs';
 import {ProviderBudget} from './routing.mjs';
 const HOME={text:'В меню',callback_data:'n|home'};
-export function providerAvailability(env){return{groq:env.GROQ_ENABLED==='true'&&env.GROQ_FREE_CONFIRMED==='true'&&Boolean(env.GROQ_API_KEY),gigachat:env.GIGACHAT_ENABLED==='true'&&env.GIGACHAT_FREE_CONFIRMED==='true'&&Boolean(env.GIGACHAT_AUTH_KEY)&&Number(env.GIGACHAT_TOKEN_CAP)>0};}
+export function providerAvailability(env){return{groq:env.GROQ_ENABLED==='true'&&env.GROQ_FREE_CONFIRMED==='true'&&Boolean(env.GROQ_API_KEY),gigachat:env.GIGACHAT_ENABLED==='true'&&env.GIGACHAT_FREE_CONFIRMED==='true'&&env.GIGACHAT_PUBLIC_USE_CONFIRMED==='true'&&env.GIGACHAT_TRANSPORT_VERIFIED==='true'&&env.GIGACHAT_EVALUATED==='true'&&Boolean(env.GIGACHAT_AUTH_KEY)&&Number(env.GIGACHAT_TOKEN_CAP)>0};}
 export class ProviderSettings {
  constructor(store,owner,env,{clock=()=>new Date().toISOString()}={}){Object.assign(this,{store,owner,env,clock});store.db.exec(`CREATE TABLE IF NOT EXISTS provider_settings(owner TEXT NOT NULL,provider TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,accepted_at TEXT,PRIMARY KEY(owner,provider));CREATE TABLE IF NOT EXISTS provider_consent_tickets(token TEXT PRIMARY KEY,owner TEXT NOT NULL,provider TEXT NOT NULL,expires_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS service_receipts(id TEXT PRIMARY KEY,response TEXT NOT NULL);`);}
  selected(provider){return this.store.db.prepare('SELECT enabled FROM provider_settings WHERE owner=? AND provider=?').get(this.owner,provider)?.enabled===1;}
