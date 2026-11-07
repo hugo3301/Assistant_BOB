@@ -12,6 +12,7 @@ import {BulkActions} from './bulk-actions.mjs';
 import {quickActions} from './natural.mjs';
 import {conversationIntent} from './conversation.mjs';
 import {unrelatedRequest} from './input-scope.mjs';
+import {PRIVATE_INPUT_MESSAGE} from './privacy.mjs';
 
 export const HELP = `Я BOB, твой личный помощник. Напиши: «Добавь задачу сдать отчёт к 12 ноября» или «Встреча завтра в 15:00, напомни за час». Следом можно: «Перенеси её на завтра в 16:00».
 
@@ -37,6 +38,7 @@ export class Alpha {
   preferences(owner) { return this.store.db.prepare('SELECT * FROM alpha_preferences WHERE owner=?').get(owner); }
   async handle(owner, text, { requestId=randomUUID(), documentText,caption='',requestText,callback,skipUi=false,returnMarkup } = {}) {
     requireThat(this.assistant.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Нет доступа.');
+    if([text,caption,documentText].some(value=>value&&this.assistant.sensitiveText(value)))return {status:'error',code:'SENSITIVE_INPUT',changed:0,modelCalls:0,text:PRIVATE_INPUT_MESSAGE};
     this.store.ensureUser(owner);
     const input=this.store.user(owner).pending;
     if(!skipUi&&!callback&&documentText===undefined&&!this.ui.profile(owner)?.onboarding&&(conversationIntent(text,input)||unrelatedRequest(text,input))){const bulkAnswer=await this.bulk.handle(owner,text,{requestId,requestText});if(bulkAnswer)return bulkAnswer;return this.assistant.handle(owner,text,{requestId,requestText:requestText??text});}

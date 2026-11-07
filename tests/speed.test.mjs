@@ -9,7 +9,7 @@ import {Telegram} from '../src/telegram.mjs';
 const NOW='2026-11-04T02:00:00.000Z';
 test('compact model context prioritizes a named distant task beyond a semester of calendar entries',()=>{
  const store=new Store();try{store.ensureUser('alice');for(let i=0;i<100;i++)store.putItem({id:'ical-'+i,owner:'alice',kind:'event',title:'Пара '+i,day:'2026-11-05',at:'2026-11-05T08:00:00.000Z'},NOW,60);store.putItem({id:'report',owner:'alice',kind:'task',title:'Отчёт по практике',day:'2027-02-12'},NOW,60);store.ensureUser('bob');store.putItem({id:'private',owner:'bob',kind:'task',title:'Отчёт чужой'},NOW,60);
-  const context=modelContext(store,'alice','перенеси сдачу отчёта по практике',NOW);assert.equal(context.items[0].id,'report');assert.equal(context.items.length,16);assert.equal(context.more_items,true);assert.ok(context.items.every(item=>item.id!=='private'));
+  const context=modelContext(store,'alice','перенеси сдачу отчёта по практике',NOW);assert.equal(context.items[0].id,'report');assert.equal(context.items.length,1);assert.equal(context.more_items,true);assert.ok(context.items.every(item=>item.id!=='private'));
  }finally{store.close();}
 });
 test('AI timeout aborts the request, settles its reservation and leaves items intact',async()=>{

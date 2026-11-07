@@ -1,3 +1,4 @@
+import {remoteJson} from './remote-json.mjs';
 import {BobError,requireThat} from './errors.mjs';
 import {transcription} from './voice.mjs';
 export class GroqSpeech {
@@ -7,9 +8,9 @@ export class GroqSpeech {
   const charged=Math.max(10,Math.ceil(seconds)),id=await this.budget.reserve(charged);let observed=null;
   try {
    const body=new FormData();body.set('file',new Blob([bytes],{type:'audio/ogg'}),'voice.ogg');body.set('model','whisper-large-v3-turbo');body.set('language','ru');body.set('response_format','verbose_json');body.set('temperature','0');
-   const response=await (0,this.fetcher)('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${this.token}`},body,redirect:'manual',signal:AbortSignal.timeout(this.timeoutMs)});
+   const response=await (0,this.fetcher)('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',redirect:'manual',headers:{Authorization:`Bearer ${this.token}`},body,signal:AbortSignal.timeout(this.timeoutMs)});
    requireThat(response.ok,response.status===429?'PROVIDER_QUOTA':response.status===401||response.status===403?'PROVIDER_AUTH':'VOICE_API','Groq не смог распознать запись. Попробуй позже, выбери Cloudflare в /providers или напиши текстом.');
-   const payload=await response.json();requireThat(typeof payload.text==='string','VOICE_API','Groq вернул неполный ответ. Попробуй ещё раз или напиши текстом.');observed=charged;return{...transcription(payload),provider:'groq',audioSeconds:charged};
+   const payload=await remoteJson(response,{code:'REMOTE_RESPONSE'});requireThat(typeof payload.text==='string','VOICE_API','Groq вернул неполный ответ. Попробуй ещё раз или напиши текстом.');observed=charged;return{...transcription(payload),provider:'groq',audioSeconds:charged};
   }catch(error){if(error instanceof BobError)throw error;throw new BobError(error.name==='TimeoutError'?'VOICE_TIMEOUT':'VOICE_NETWORK','Groq не ответил. Дела не изменены; можно написать текстом.');}
   finally{await this.budget.settle(id,observed);}
  }

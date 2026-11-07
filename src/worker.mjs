@@ -1,3 +1,4 @@
+import {configuredSecrets,containsCredential,minimalUpdate,PRIVATE_INPUT_MESSAGE} from './privacy.mjs';
 import { DurableObject } from 'cloudflare:workers';
 import { timingSafeEqual,randomUUID } from 'node:crypto';
 import { CloudStore } from './cloud-store.mjs';
@@ -60,7 +61,7 @@ export default {
       const admitted=await callControl(env,'/admit',{owner,voice:Boolean(message?.voice),eventId:String(update.update_id)});
       if(!admitted.allowed){const telegram=new Telegram(env.TELEGRAM_BOT_TOKEN);if(update.callback_query)ctx.waitUntil(telegram.answer(update.callback_query.id).catch(()=>{}));if((await callControl(env,'/notice',{owner:'rate:'+owner})).send)ctx.waitUntil(telegram.send(owner,'Слишком много запросов подряд. Подожди минуту и отправь нужное дело снова. Голосовые — до двух в минуту.').catch(()=>{}));return new Response('ok');}
       if(start)message.text=/^p_[a-f0-9]{20}$/u.test(start[1]??'')?'/start '+start[1]:'/start';
-      return callUser(env,owner,'/enqueue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(update)});
+      return callUser(env,owner,'/enqueue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(minimalUpdate(update,configuredSecrets(env)))});
     } catch { return new Response('Temporarily unavailable',{status:503}); }
   },
   async scheduled(_controller,env,ctx) {ctx.waitUntil(callControl(env,'/wake'));},
@@ -68,7 +69,7 @@ export default {
 export class BobObject extends DurableObject {
   constructor(ctx,env) {
     super(ctx,env); this.owner = null; this.store = new CloudStore(ctx.storage); this.env = env;this.runner=null;this.opsEvents=[];
-    this.telegram = new Telegram(env.TELEGRAM_BOT_TOKEN);
+    this.secrets=configuredSecrets(env);this.telegram = new Telegram(env.TELEGRAM_BOT_TOKEN,{secrets:this.secrets});
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS telegram_jobs(id INTEGER PRIMARY KEY,payload TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at TEXT NOT NULL,lease_until TEXT,last_error TEXT);
       CREATE INDEX IF NOT EXISTS jobs_due ON telegram_jobs(status,next_at,id);
       CREATE TABLE IF NOT EXISTS telegram_outbox(id TEXT PRIMARY KEY,payload TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at TEXT NOT NULL,sent_at TEXT,last_error TEXT);
@@ -85,7 +86,7 @@ export class BobObject extends DurableObject {
     this.budget=new SharedBudget(this.env,owner);this.providers=new ProviderSettings(this.store,owner,this.env);
     const cloudText=new WorkersAI(this.store,{accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget});
     this.gigaText=this.providers.ready('gigachat')?new GigaChat({budget:new ProviderBudget(this.env,owner,'gigachat'),transport:new GigaRelay({url:this.env.GIGACHAT_RELAY_URL,secret:this.env.GIGACHAT_RELAY_SECRET})}):null;
-    this.assistant=new Assistant(this.store,{provider:{complete:async request=>{if(this.providers.selected('gigachat')){this.providers.assertReady('gigachat');return this.observe('llm_gigachat',()=>this.gigaText.complete(request));}return this.observe('llm_cloudflare',()=>cloudText.complete(request));}},allowedOwners:[owner]});this.alpha=new Alpha(this.store,this.assistant,{admin:owner===String(this.env.TELEGRAM_OWNER_ID)});const cloudSpeech=new SpeechAI({accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget});this.groqSpeech=this.providers.ready('groq')?new GroqSpeech({token:this.env.GROQ_API_KEY,budget:new ProviderBudget(this.env,owner,'groq')}):null;this.voice=new VoiceFlow(this.store,owner,{telegram:this.telegram,speech:{transcribe:async(bytes,seconds)=>{if(this.providers.selected('groq')){this.providers.assertReady('groq');return this.observe('stt_groq',()=>this.groqSpeech.transcribe(bytes,seconds));}return this.observe('stt_cloudflare',()=>cloudSpeech.transcribe(bytes,seconds));}}});this.calendars=new CalendarService(this.store,owner,this.env,{schedule:()=>this.wake(),enabled:()=>!this.paused});this.planner=new PlannerService(this.store,owner,this.alpha.ui,{enabled:()=>!this.paused});this.reminders=new ReminderWorker(this.store);this.paused=this.store.db.prepare("SELECT value FROM runtime_health WHERE key='paused'").get()?.value==='1';
+    this.assistant=new Assistant(this.store,{provider:{complete:async request=>{if(this.providers.selected('gigachat')){this.providers.assertReady('gigachat');return this.observe('llm_gigachat',()=>this.gigaText.complete(request));}return this.observe('llm_cloudflare',()=>cloudText.complete(request));}},allowedOwners:[owner],sensitiveText:text=>containsCredential(text,this.secrets)});this.alpha=new Alpha(this.store,this.assistant,{admin:owner===String(this.env.TELEGRAM_OWNER_ID)});const cloudSpeech=new SpeechAI({accountId:this.env.CLOUDFLARE_ACCOUNT_ID,token:this.env.WORKERS_AI_TOKEN,budget:this.budget});this.groqSpeech=this.providers.ready('groq')?new GroqSpeech({token:this.env.GROQ_API_KEY,budget:new ProviderBudget(this.env,owner,'groq')}):null;this.voice=new VoiceFlow(this.store,owner,{telegram:this.telegram,sensitiveText:text=>containsCredential(text,this.secrets),speech:{transcribe:async(bytes,seconds)=>{if(this.providers.selected('groq')){this.providers.assertReady('groq');return this.observe('stt_groq',()=>this.groqSpeech.transcribe(bytes,seconds));}return this.observe('stt_cloudflare',()=>cloudSpeech.transcribe(bytes,seconds));}}});this.calendars=new CalendarService(this.store,owner,this.env,{schedule:()=>this.wake(),enabled:()=>!this.paused});this.planner=new PlannerService(this.store,owner,this.alpha.ui,{enabled:()=>!this.paused});this.reminders=new ReminderWorker(this.store);this.paused=this.store.db.prepare("SELECT value FROM runtime_health WHERE key='paused'").get()?.value==='1';
   }
   health(key) { this.store.db.prepare('INSERT INTO runtime_health VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,new Date().toISOString()); }
   async fetch(request) {
@@ -124,6 +125,7 @@ export class BobObject extends DurableObject {
     const response=presentReply({text:message.text},this.store,this.owner);for(const chunk of splitRichMessage(response.text,response.entities))await this.telegram.send(this.owner,chunk.text,response.replyMarkup,chunk.entities);
   }
   async serviceMessage(text,callback,requestId){
+    if(text==='/security-input-blocked')return{status:'error',code:'SENSITIVE_INPUT',changed:0,modelCalls:0,text:PRIVATE_INPUT_MESSAGE};
     if(callback?.data==='a|dashboard'||/^\/admin(?:@mybob_robot)?\s*$/iu.test(text??''))return this.owner===String(this.env.TELEGRAM_OWNER_ID)?{status:'ok',changed:0,modelCalls:0,text:'Панель BOB\n\nНагрузка, ошибки, очереди, календари и ресурс ИИ. Доступ только владельцу.',replyMarkup:{inline_keyboard:[[{text:'Открыть панель',web_app:{url:'https://assistant-bob-alpha.assistant-bob.workers.dev/dashboard'}}],[{text:'В меню',callback_data:'n|home'}]]}}:{status:'error',code:'ADMIN_ONLY',changed:0,modelCalls:0,text:'Панель доступна только владельцу BOB.'};
     const providerResponse=await this.providers.message(text,callback,requestId);if(providerResponse)return providerResponse;
     const calendarResponse=await this.calendars.message(text,callback,requestId);if(calendarResponse)return calendarResponse;

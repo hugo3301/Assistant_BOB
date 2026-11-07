@@ -235,6 +235,15 @@ try{
   await until(()=>sent.slice(beforeAdmin).some(message=>message.reply_markup?.inline_keyboard?.flat().some(button=>button.web_app?.url.endsWith('/dashboard'))));
   await request('/telegram/webhook',update(721,'/admin',208),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeAdmin).some(message=>String(message.chat_id)==='208'&&message.text?.includes('только владельцу')));
 
+  // A blocked input never persists its credential or unused Telegram profile fields.
+  const syntheticCredential='gsk_'+'Z'.repeat(40),beforePrivacyAI=calls.filter(host=>host==='api.cloudflare.com').length;
+  await deliveryDb.exec("INSERT INTO telegram_jobs(id,payload,status,next_at,lease_until) VALUES (9000,'{}','processing','2000-01-01T00:00:00Z','2099-01-01T00:00:00Z')");
+  const privateUpdate=update(9001,'Добавь задачу '+syntheticCredential);privateUpdate.message.from.username='PRIVATE_PROFILE';privateUpdate.message.contact={phone_number:'PRIVATE_CONTACT'};privateUpdate.message.forward_origin={type:'user',sender_user:{id:999,first_name:'PRIVATE_FORWARD'}};
+  await request('/telegram/webhook',privateUpdate,{'X-Telegram-Bot-Api-Secret-Token':secret});
+  const queuedPrivacy=(await deliveryDb.exec('SELECT payload FROM telegram_jobs WHERE id=9001'))[0].payload;assert.equal(queuedPrivacy.includes(syntheticCredential),false);assert.doesNotMatch(queuedPrivacy,/PRIVATE_PROFILE|PRIVATE_CONTACT|PRIVATE_FORWARD|forward_origin|contact/);assert.match(queuedPrivacy,/security-input-blocked/);
+  await deliveryDb.exec('DELETE FROM telegram_jobs WHERE id=9000');const privacyBefore=sent.length;await request('/telegram/webhook',update(9002,'/status'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(privacyBefore).some(message=>message.text?.includes('пароль или ключ доступа')));
+  assert.equal(calls.filter(host=>host==='api.cloudflare.com').length,beforePrivacyAI);assert.equal(sent.some(message=>message.text?.includes(syntheticCredential)),false);
+
   console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,plannerSignedIsolation:true,plannerCardDeepLink:true,bundledBrowserGeometry:true,arithmeticWithoutAI:true,unrelatedRequestsWithoutAI:true,delayedPeriodRefreshed:true,spokenWorkDuration:true,groqConsentAndSeparateQuota:true,gigaConsentNativeFunctionsAndSeparateQuota:true,gigaSignedRelayAndDurableClaim:true,gigaProbeHardLimit:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

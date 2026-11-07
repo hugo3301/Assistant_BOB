@@ -24,6 +24,7 @@ import {
   page,
 } from "./pages.mjs";
 import { limitedText } from "./network.mjs";
+import {assertPrivateInput,configuredSecrets} from '../privacy.mjs';
 
 const button = (text, action, id = "") => ({
   text,
@@ -77,6 +78,7 @@ export class CalendarService {
           credentials,
           configuration: this.config(),
           fetcher: this.fetcher,
+          privateInput:value=>assertPrivateInput(value,configuredSecrets(this.env)),
           saveCredentials: async (next) => {
             const encrypted = seal(
                 this.env.CALENDAR_SECRET_KEY,
@@ -105,6 +107,7 @@ export class CalendarService {
           credentials,
           fetcher: this.fetcher,
           zone: this.store.user(this.owner).timezone,
+          privateInput:value=>assertPrivateInput(value,configuredSecrets(this.env)),
         });
   }
   storeConnection(provider, credentials, reconnectId = null) {

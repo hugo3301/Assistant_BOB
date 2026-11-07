@@ -8,6 +8,7 @@ import {modelContext} from './context.mjs';
 import {conversationIntent,fastConversation} from './conversation.mjs';
 import {readDuration} from './duration.mjs';
 import {bindCallSources,splitRequests} from './requests.mjs';
+import {containsCredential,PRIVATE_INPUT_MESSAGE} from './privacy.mjs';
 import {unrelatedRequest,planningIntent,PLANNING_ONLY} from './input-scope.mjs';
 
 export function reminderFromText(text, fallback) {
@@ -22,9 +23,9 @@ export function reminderFromText(text, fallback) {
 }
 export const durationFromText=readDuration;
 export class Assistant {
-  constructor(store, { provider = null, allowedOwners = ['local'], clock = () => new Date().toISOString(), maxCalls = 2, timeBudgetMs=18000 } = {}) {
+  constructor(store, { provider = null, allowedOwners = ['local'], clock = () => new Date().toISOString(), maxCalls = 2, timeBudgetMs=18000,sensitiveText=containsCredential } = {}) {
     requireThat(Number.isInteger(maxCalls) && maxCalls >= 1 && maxCalls <= 2, 'CALL_LIMIT', 'Допускаются один или два модельных шага.');
-    this.store = store; this.provider = provider; this.allowedOwners = new Set(allowedOwners); this.clock = () => new Date(clock()).toISOString(); this.maxCalls = maxCalls; this.timeBudgetMs=timeBudgetMs;this.locks = new Map();
+    this.store = store; this.provider = provider; this.allowedOwners = new Set(allowedOwners); this.clock = () => new Date(clock()).toISOString(); this.maxCalls = maxCalls; this.timeBudgetMs=timeBudgetMs;this.locks = new Map();this.sensitiveText=sensitiveText;
   }
   handle(owner, text, options = {}) {
     requireThat(this.allowedOwners.has(owner), 'OWNER_NOT_ALLOWED', 'Этот помощник не настроен для данного владельца.');
@@ -120,6 +121,7 @@ export class Assistant {
   }
   async run(owner, text, { requestId = randomUUID(), source = 'user',requestText,applicationCalls } = {}) {
     requireThat(typeof text === 'string' && text.trim().length > 0 && text.length <= 8000, 'INVALID_TEXT', 'Сообщение должно содержать от 1 до 8000 символов.');
+    if(this.sensitiveText(text))return {status:'error',code:'SENSITIVE_INPUT',changed:0,modelCalls:0,text:PRIVATE_INPUT_MESSAGE};
     if (source !== 'user') return { status: 'material', text: 'Материал не является командой пользователя. Записи не изменены.', changed: 0 };
     this.store.ensureUser(owner);
     const claim = this.store.beginTurn(owner, requestId, requestText??text, this.clock());
@@ -182,6 +184,7 @@ export class Assistant {
         if (!calls) {
           requireThat(this.provider, 'AI_OFFLINE', 'ИИ не подключён. Доступны /today, /week, /ahead и /tasks.');
           const context = modelContext(this.store,owner,effectiveText,this.clock());
+          requireThat(!this.sensitiveText(JSON.stringify(context)),'SENSITIVE_INPUT',PRIVATE_INPUT_MESSAGE);
           const remaining=deadline-Date.now();requireThat(remaining>=500,'AI_TIMEOUT','ИИ не успел ответить. Попробуй ещё раз; дела не изменены.');
           modelCalls++;
           const generated = await this.provider.complete({ context, text: effectiveText, feedback: lastError,timeoutMs:remaining });
@@ -192,6 +195,7 @@ export class Assistant {
         try {
           const sourceText = pending?.selectedId ? `${effectiveText}\nВыбрано: ${pending.selectedId}` : effectiveText;
           requireThat(!calls.some(call=>call.name==='reply_user'),'CONVERSATION_DISABLED','Общие ответы ИИ отключены. Доступно планирование дел.');
+          requireThat(!this.sensitiveText(JSON.stringify(calls)),'SENSITIVE_INPUT',PRIVATE_INPUT_MESSAGE);
           calls=bindCallSources(calls,sourceText);
           const prepared = this.prepare(owner, calls, sourceText, user, referenceAt);
           if(prepared[0]?.kind==='answer')return commit({status:'ok',text:prepared[0].text,changed:0,usage});

@@ -1,3 +1,4 @@
+import {remoteJson} from './remote-json.mjs';
 import { BobError, requireThat } from './errors.mjs';
 import { SYSTEM, TOOLS,CONVERSATION_SYSTEM } from './tools.mjs';
 
@@ -17,9 +18,9 @@ export class WorkersAI {
     const reservation = this.budget?await this.budget.reserve(upper,'llm'):this.store.reserveBudget(this.clock(), upper, this.dailyBudget);
     let observed = null;
     try {
-      const response = await (0, this.fetcher)(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/v1/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1,Math.min(this.timeoutMs,timeoutMs))) });
+      const response = await (0, this.fetcher)(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/v1/chat/completions`, { method: 'POST', redirect:'manual', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1,Math.min(this.timeoutMs,timeoutMs))) });
       requireThat(response.ok, response.status === 429 ? 'AI_QUOTA' : response.status === 401 || response.status === 403 ? 'AI_AUTH' : 'AI_HTTP', response.status === 429 ? 'ИИ сейчас недоступен по лимиту. Команды и напоминания продолжают работать.' : 'Не удалось получить ответ ИИ. Записи не изменены.');
-      const payload = await response.json(), result = payload.result ?? payload;
+      const payload = await remoteJson(response,{code:'REMOTE_RESPONSE'}), result = payload.result ?? payload;
       observed = result.usage?.neurons ?? payload.usage?.neurons ?? null;
       requireThat(payload.success !== false && result.choices?.[0]?.message, 'AI_RESPONSE', 'Некорректный ответ ИИ.');
       requireThat(result.choices[0].finish_reason !== 'length', 'AI_TRUNCATED', 'Ответ ИИ не поместился. Уточни запрос короче.');

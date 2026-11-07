@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { BobError, requireThat } from "../errors.mjs";
 import { fromGoogle, googleBody } from "./model.mjs";
 import { accepted, request, limitedText } from "./network.mjs";
+import {assertPrivateInput} from '../privacy.mjs';
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
@@ -85,11 +86,13 @@ export class GoogleCalendar {
     configuration,
     saveCredentials = async () => {},
     fetcher = fetch,
+    privateInput=assertPrivateInput,
   }) {
     this.credentials = credentials;
     this.configuration = configuration;
     this.saveCredentials = saveCredentials;
     this.fetcher = fetcher;
+    this.privateInput=privateInput;
     this.requests = 0;
   }
   async token() {
@@ -195,6 +198,7 @@ export class GoogleCalendar {
       : fromGoogle(JSON.parse(await limitedText(response)));
   }
   async write(calendar, remote, item, { create = false } = {}) {
+    this.privateInput(item.title);
     const base = this.path(calendar),
       query = "?sendUpdates=none";
     if (item.status === "cancelled") {

@@ -2,6 +2,7 @@ import { requireThat } from "../errors.mjs";
 import { accepted, request, limitedText } from "./network.mjs";
 import { davResponses, descendants, textAt, xmlEscape } from "./xml.mjs";
 import { icalEvents, writeIcal, davId, davRef } from "./ical-events.mjs";
+import {assertPrivateInput} from '../privacy.mjs';
 const ROOT = "https://caldav.yandex.ru/";
 export function davUrl(value, base = ROOT) {
   let url;
@@ -26,10 +27,11 @@ export function davUrl(value, base = ROOT) {
 const document = (tag, body) =>
   `<?xml version="1.0" encoding="utf-8"?><${tag} xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">${body}</${tag}>`;
 export class YandexCalendar {
-  constructor({ credentials, fetcher = fetch, zone = "Asia/Tomsk" }) {
+  constructor({ credentials, fetcher = fetch, zone = "Asia/Tomsk",privateInput=assertPrivateInput }) {
     this.credentials = credentials;
     this.fetcher = fetcher;
     this.zone = zone;
+    this.privateInput=privateInput;
     this.written = new Map();
     this.requests = 0;
   }
@@ -204,6 +206,7 @@ export class YandexCalendar {
     item,
     { create = false, now = new Date().toISOString() } = {},
   ) {
+    this.privateInput(item.title);
     const resource = davUrl(remote.resource),
       collection = davUrl(calendar);
     requireThat(
