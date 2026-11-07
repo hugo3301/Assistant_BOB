@@ -68,3 +68,5 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+- Аудит безопасности bob-wrh.34 (7ноября): docs/privacy-boundaries.md, src/privacy.mjs, src/remote-json.mjs. Минимизировать TGочереди и AIконтекст; не отправлять историю/несвязанные дела. Ключевой ввод блокируется до очереди/AI, исходящие ключи маскируются; ручные redirects и boundedJSON. Gitleaks8.30.1 закреплён SHA256 и проверяет Gitисторию+trackedдерево, exactисключение только GROQbooleanимён, npm audit и weeklyCI. Новые коммитыGitHubnoreply. Пользователь отдельно разрешил переписать историюmain для удаления старого авторскогоадреса:38идентичныхдеревьев,force-with-lease,защитаforce/deletions восстановлена. СтарыеSHAдругие;GitHubкеши/чужиекопии автоматомнечистятся. Beads/пользовательскиебазы не затрагивались.
