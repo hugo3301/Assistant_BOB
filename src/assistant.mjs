@@ -199,7 +199,7 @@ export class Assistant {
           const changes = prepared.filter(action => action.kind !== 'read');
           const lines = prepared.map(action => action.kind === 'read' ? overview(this.store, owner, action.scope, this.clock()) : action.kind === 'create' ? `Добавил: ${action.item.title}${action.item.day ? ` — ${formatDate(action.item.day, action.item.at, user.timezone,action.item.approximate)}` : ' — без срока'} [${action.item.id}]` : action.changes.status ? `${action.changes.status === 'completed' ? 'Выполнено' : 'Отменено'}: ${action.target.title}` : `Перенёс: ${action.target.title} — ${formatDate(action.changes.day, action.changes.at, user.timezone,action.changes.approximate)}`);
           const focusId = changes.length === 1 ? changes[0].kind === 'create' ? changes[0].item.id : changes[0].target.id : user.focus_id;
-          return commit({ status: 'ok', text: lines.join('\n'), changed: changes.length, focusId, pending: null, usage }, () => {
+          return commit({ status: 'ok', text: lines.join('\n'), changed: changes.length, effects:changes.map(action=>({id:action.kind==='create'?action.item.id:action.target.id,action:action.kind})), focusId, pending: null, usage }, () => {
             for (const action of changes) {
               if (action.kind === 'create') this.store.putItem(action.item, this.clock(), action.reminderMinutes);
               else {
