@@ -21,6 +21,8 @@
 - Общайся с пользователем по-русски, если он не попросил иначе.
 - Не переноси требования и решения из других проектов без проверки их применимости.
 
+- GitHub bob-wrh.29: README/MIT/SECURITY/CONTRIBUTING/шаблоны, .env.example, CI и CD подготовлены. npm run check:repo,343Nodeтеста и workerd/SQLite прошли локально. В harness восстановления исправлен подсчёт именно reply11/12 вместо всех Telegram сообщений: независимый alarm мог давать лишнее уведомление. CI push/PR main без productionkeys, actions pinned SHA. CD публикует только актуальный SHA успешного push CI, main-only environment, сохраняет Worker secrets; BUILD_COMMIT проверяется публичным health. GitHubAPI настроены read-only Actions/GitHub-owned actions, secret-scanning/pushprotection/private security reports/Dependabot. CD variablefalse до отдельно разрешённого GitHub deploy-only token; рабочие ключи бота вGitHub не передавать. docs/ci-cd.md.
+
 ## Задачи и решения
 
 - Beads (`bd`) — основной трекер задач, исследований, решений и зависимостей.

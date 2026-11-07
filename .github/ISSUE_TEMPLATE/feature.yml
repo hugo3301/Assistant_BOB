@@ -1,0 +1,16 @@
+name: Предложение
+description: Предложить улучшение помощника
+title: '[Feature] '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу нужно решить
+      description: Опиши ситуацию и желаемый результат для пользователя.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Ограничения и варианты
+      description: Например, бесплатность, нужный сервис, приватность и возможный обходной способ.

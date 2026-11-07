@@ -1,0 +1,12 @@
+import {spawn,execFileSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {RELEASE_REPOSITORY} from './release-policy.mjs';
+if(process.env.GITHUB_ACTIONS!=='true'||process.env.GITHUB_REPOSITORY!==RELEASE_REPOSITORY||!process.env.CLOUDFLARE_API_TOKEN)throw Error('Run from the authorized production workflow with a deploy-only token');
+const receipt=JSON.parse(readFileSync('work/ci-verification.json','utf8')),sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+if(receipt.sha!==sha||sha!==process.env.DEPLOY_SHA||receipt.repository!==RELEASE_REPOSITORY||Date.now()-receipt.verifiedAt>15*60000||receipt.verifiedAt>Date.now())throw Error('Missing or stale exact-commit CI verification');
+if(execFileSync('git',['status','--porcelain','--untracked-files=no'],{encoding:'utf8'}).trim())throw Error('Tracked working tree changed after checkout');
+const r=await fetch('https://api.github.com/repos/'+RELEASE_REPOSITORY+'/commits/main',{headers:{'User-Agent':'BOB-CD'},signal:AbortSignal.timeout(20000)});if(!r.ok||(await r.json()).sha!==sha)throw Error('main advanced; wait for the newer CI');
+const config=JSON.parse(readFileSync('wrangler.jsonc','utf8'));if(config.name!=='assistant-bob-alpha'||config.account_id!=='f4b692a8756a3f726f790132ad1a5552')throw Error('Unexpected production target');
+const child=spawn(process.execPath,[resolve('node_modules/wrangler/bin/wrangler.js'),'deploy','--keep-vars','--var','BUILD_COMMIT:'+sha],{stdio:'inherit',windowsHide:true,env:{...process.env,CI:'true',WRANGLER_SEND_METRICS:'false',CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV:'false'}});
+const code=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',done);});process.exitCode=Number(code)||0;

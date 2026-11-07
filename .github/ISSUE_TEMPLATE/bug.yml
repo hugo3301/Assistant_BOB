@@ -1,0 +1,24 @@
+name: Ошибка
+description: Сообщить о воспроизводимой проблеме BOB
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: Не прикладывай токены, приватные ссылки календарей или чужие сообщения. Уязвимости сообщай по SECURITY.md.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как воспроизвести
+      description: Минимальный пример на вымышленных данных, ожидаемый и фактический результат.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Среда
+      placeholder: Например, Android и версия Telegram; для локального запуска — ОС и Node.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Дополнительные сведения
+      description: Обезличенный скриншот или текст ошибки. Голосовые и реальные дела не обязательны.

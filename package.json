@@ -13,7 +13,9 @@
     "build:cloud": "node scripts/build-cloud.mjs",
     "test:cloud": "node scripts/build-cloud.mjs && node scripts/check-cloud-local.mjs",
     "deploy": "node --env-file=.env scripts/deploy.mjs",
-    "design:catalog": "node scripts/render-design-catalog.mjs docs/design-catalog.html"
+    "design:catalog": "node scripts/render-design-catalog.mjs docs/design-catalog.html",
+    "check:repo": "node scripts/check-repository.mjs",
+    "ci": "npm run check:repo && npm test && npm run test:cloud"
   },
   "dependencies": {
     "ical.js": "2.2.1",
@@ -22,5 +24,15 @@
   "devDependencies": {
     "miniflare": "5.20261103.0-beta",
     "wrangler": "4.157.0"
-  }
+  },
+  "description": "Личный Telegram-помощник: задачи, встречи, расписание и напоминания",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hugo3301/Assistant_BOB.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hugo3301/Assistant_BOB/issues"
+  },
+  "homepage": "https://github.com/hugo3301/Assistant_BOB#readme"
 }

@@ -110,9 +110,16 @@ try{
   await until(async()=>(await status()).outbox.some(row=>row.status==='pending'));assert.equal(sent.filter(message=>message.text).length,count);
   await request('/telegram/webhook',update(12,'/week'),{'X-Telegram-Bot-Api-Secret-Token':secret});
   await until(async()=>(await status()).latency.samples===10);assert.equal(sent.filter(message=>message.text).length,count);
-  await mf.dispose();mf=new Miniflare(configuration);
-  await until(()=>sent.filter(message=>message.text).length===count+2);
-  assert.match(sent.filter(message=>message.text).at(-2).text,/Сегодня/);assert.match(sent.filter(message=>message.text).at(-1).text,/Ближайшие 7 дней/);
+  const queuedStore=await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:'owner:123:v1'});
+  const expectedReplies=(await queuedStore.exec("SELECT payload FROM telegram_outbox WHERE id IN ('reply:11:0','reply:12:0') ORDER BY rowid")).map(row=>JSON.parse(row.payload).text);assert.equal(expectedReplies.length,2);
+  await mf.dispose();mf=new Miniflare(configuration);await mf.ready;
+  // Materialize the persisted actor in the new local runtime before waiting for alarms.
+  assert.equal((await status()).items,2);
+  const recoveredStore=await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:'owner:123:v1'});
+  await until(async()=>{const rows=await recoveredStore.exec("SELECT status FROM telegram_outbox WHERE id IN ('reply:11:0','reply:12:0')");return rows.length===2&&rows.every(row=>row.status==='sent');});
+  // Independent alarm notifications may also arrive; assert these replies exactly once and in order.
+  const recoveredReplies=sent.filter(message=>message.text).slice(count).filter(message=>expectedReplies.includes(message.text)).map(message=>message.text);
+  assert.deepEqual(recoveredReplies,expectedReplies);assert.match(recoveredReplies[0],/Сегодня/);assert.match(recoveredReplies[1],/Ближайшие 7 дней/);
   for(let i=0;i<9;i++){
     const before=sent.filter(message=>message.text?.includes('start=join_')).length;
     await request('/telegram/webhook',update(100+i,'/invite'),{'X-Telegram-Bot-Api-Secret-Token':secret});
