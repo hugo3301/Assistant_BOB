@@ -44,6 +44,9 @@ test('recognized secret in voice is neither cached, echoed nor dispatched after 
 test('Telegram output masks legacy secret strings and clears stale entity offsets',async()=>{
  const sent=[],tg=new Telegram(botToken,{fetcher:async(_url,init)=>{assert.equal(init.redirect,'manual');sent.push(JSON.parse(init.body));return Response.json({ok:true,result:{}});}});await tg.send(123,'старое дело '+key,undefined,[{type:'bold',offset:0,length:10}]);await tg.edit(123,1,'старый '+key,{},[{type:'bold',offset:0,length:4}]);for(const row of sent){assert.equal(row.text.includes(key),false);assert.deepEqual(row.entities,[]);}
 });
+test('private JSON export remains valid after masking a legacy labelled password',async()=>{
+ let body;const tg=new Telegram(botToken,{fetcher:async(_url,init)=>{body=await init.body.get('document').text();return Response.json({ok:true,result:{}});}});const original={items:[{title:'пароль: '+'X'.repeat(20),day:'2026-11-08',duration:30},{title:'Встреча'}]};await tg.document(123,{text:JSON.stringify(original),name:'export.json'});const parsed=JSON.parse(body);assert.equal(body.includes('X'.repeat(20)),false);assert.equal(parsed.items[0].day,original.items[0].day);assert.equal(parsed.items[0].duration,30);assert.equal(parsed.items[1].title,'Встреча');
+});
 test('credentialed text/STT/Telegram requests refuse redirects and do not send data to another host',async()=>{
  let requests=0;const redirect=async(_url,init)=>{requests++;assert.equal(init.redirect,'manual');return new Response('{}',{status:307,headers:{Location:'https://untrusted.invalid/collect'}});},store=new Store(),budget={reserve:async()=> 'r',settle:async()=>{}};try{
  const cloud=new WorkersAI(store,{accountId:'a'.repeat(32),token:'synthetic-workers-ai-token',budget,fetcher:redirect});await assert.rejects(cloud.complete({context:{},text:'Встреча завтра'}));

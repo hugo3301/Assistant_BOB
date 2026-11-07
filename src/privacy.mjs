@@ -8,6 +8,7 @@ const PATTERNS=[
 export function configuredSecrets(env={}){return Object.entries(env).filter(([key,value])=>/(?:TOKEN|SECRET|KEY)$/u.test(key)&&typeof value==='string'&&value.length>=16).map(([,value])=>value);}
 export function containsCredential(value,secrets=[]){const text=String(value??'');return secrets.some(secret=>text.includes(secret))||PATTERNS.some(pattern=>{pattern.lastIndex=0;return pattern.test(text);});}
 export function redactCredentials(value,secrets=[]){let text=String(value??'');for(const secret of [...secrets].sort((a,b)=>b.length-a.length))text=text.replaceAll(secret,'[скрыто]');for(const pattern of PATTERNS){pattern.lastIndex=0;text=text.replace(pattern,'[скрыто]');}return text;}
+export function redactJsonText(value,secrets=[]){try{const parsed=JSON.parse(value);let changed=false;const clean=item=>{if(typeof item==='string'){const next=redactCredentials(item,secrets);changed||=next!==item;return next;}if(Array.isArray(item))return item.map(clean);if(item&&typeof item==='object')return Object.fromEntries(Object.entries(item).map(([key,nested])=>[clean(key),clean(nested)]));return item;};const safe=clean(parsed);return changed?JSON.stringify(safe,null,2):value;}catch{return redactCredentials(value,secrets);}}
 export function assertPrivateInput(value,secrets=[]){requireThat(!containsCredential(value,secrets),'SENSITIVE_INPUT',PRIVATE_INPUT_MESSAGE);}
 export function minimalUpdate(update,secrets=[]){
  const source=update.message??update.callback_query?.message;

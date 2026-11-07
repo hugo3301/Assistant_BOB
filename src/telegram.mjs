@@ -1,5 +1,5 @@
 import { BobError, requireThat } from './errors.mjs';
-import {redactCredentials} from './privacy.mjs';
+import {redactCredentials,redactJsonText} from './privacy.mjs';
 import {remoteJson} from './remote-json.mjs';
 export function splitMessage(text, limit = 3500) {
   const result = []; let rest = String(text);
@@ -25,7 +25,7 @@ export class Telegram {
   async edit(chat,message,text,replyMarkup,entities=[]){const safe=redactCredentials(text,this.secrets);try{return await this.call('editMessageText',{chat_id:chat,message_id:message,text:safe,entities:safe===text?entities:[],reply_markup:replyMarkup,link_preview_options:{is_disabled:true}});}catch(error){if(error.unchanged)return;if(error.editUnavailable)return this.send(chat,text,replyMarkup,entities);throw error;}}
   answer(id){return this.call('answerCallbackQuery',{callback_query_id:id});}
   typing(chat){return this.call('sendChatAction',{chat_id:chat,action:'typing'});}
-  document(chat, file) { const form = new FormData(); form.set('chat_id',String(chat)); form.set('document',new Blob([redactCredentials(file.text,this.secrets)],{type:'application/json'}),file.name); return this.call('sendDocument',form,true); }
+  document(chat, file) { const form = new FormData(); form.set('chat_id',String(chat)); form.set('document',new Blob([redactJsonText(file.text,this.secrets)],{type:'application/json'}),file.name); return this.call('sendDocument',form,true); }
   async voice(fileId){
     const info=await this.call('getFile',{file_id:fileId});requireThat((info.file_size??0)<=2000000&&/^[\w/.-]+$/u.test(info.file_path??'')&&!info.file_path.includes('..'),'VOICE_SIZE','Пришли голосовое до 2 МБ.');
     try{const response=await (0,this.fetcher)(`https://api.telegram.org/file/bot${this.token}/${info.file_path}`,{redirect:'manual',signal:AbortSignal.timeout(15000)});requireThat(response.ok,'VOICE_DOWNLOAD','Не удалось скачать голосовое. Отправь его заново.');const chunks=[];let size=0;for await(const chunk of response.body){size+=chunk.length;requireThat(size<=2000000,'VOICE_SIZE','Запись больше 2 МБ.');chunks.push(chunk);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}catch(error){if(error instanceof BobError)throw error;throw new BobError('VOICE_DOWNLOAD','Не удалось скачать голосовое. Отправь его заново или напиши текстом.');}
