@@ -15,6 +15,7 @@
     "deploy": "node --env-file=.env scripts/deploy.mjs",
     "design:catalog": "node scripts/render-design-catalog.mjs docs/design-catalog.html",
     "check:repo": "node scripts/check-repository.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "ci": "npm run check:repo && npm test && npm run test:cloud"
   },
   "dependencies": {

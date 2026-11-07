@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Exact non-secret boolean configuration variable names in prose"
+regexTarget = "secret"
+regexes = ['''^GROQ_ENABLED(?:=(?:true|false))?$''', '''^GROQ_FREE_CONFIRMED(?:=(?:true|false))?$''']
