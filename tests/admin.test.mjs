@@ -8,7 +8,7 @@ import {adminPublic} from '../src/admin/public.mjs';
 import {APP_ORIGIN} from '../src/calendars/pages.mjs';
 import {createHmac} from 'node:crypto';
 import {runInNewContext} from 'node:vm';
-import {ADMIN_CLIENT} from '../src/admin/client.mjs';
+import {ADMIN_CLIENT} from '../src/admin/client-source.mjs';
 let seq=0;
 function setup(){let now='2026-11-07T02:00:00.000Z';const store=new Store(),clock=()=>now,control=new ControlStore(store.db,{admin:'123',clock,mode:'open'}),ops=new OpsStore(store.db,{clock}),providers=new ProviderLedger(control,{gigachatCap:49900000});return {store,control,ops,providers,advance:ms=>now=new Date(Date.parse(now)+ms).toISOString(),read:(options={})=>ops.read(control,providers,{},options),event:(component,fields={})=>({id:'e-'+(++seq),component,outcome:'ok',...fields})};}
 test('metrics aggregate once, measure histogram percentiles and keep unknown usage distinct from zero',()=>{
@@ -46,11 +46,11 @@ test('bundled dashboard client renders every tab, changes periods, exports and h
  ops.record('123',[event('inbound'),event('job',{durationMs:123}),event('llm_gigachat',{tokens:0,cachedTokens:0})],{jobs:{done:1},calendars:{google:{active:1}},calendarHealth:{google:{lastOk:'2026-11-07T01:00:00Z'}}});const payload=read();
  const nodes=new Map(),make=id=>({id,innerHTML:'',textContent:'',disabled:false,checked:false,value:'',dataset:{},attrs:{},events:{},setAttribute(k,v){this.attrs[k]=v;},addEventListener(k,fn){this.events[k]=fn;},showModal(){this.open=true;},close(){this.open=false;},click(){this.clicked=true;}});
  const node=id=>{if(!nodes.has(id))nodes.set(id,make(id));return nodes.get(id);},tabs=['overview','components','providers','calendars','audit'].map(tab=>Object.assign(make('tab-'+tab),{dataset:{tab}})),periods=['day','week','month'].map(period=>Object.assign(make(period),{dataset:{period}}));
- const paths=[],context={document:{hidden:false,getElementById:node,querySelectorAll:selector=>selector==='[data-tab]'?tabs:periods,createElement:()=>make('a')},window:{Telegram:{WebApp:{initData:'synthetic',ready(){},expand(){}}}},fetch:async(url,init)=>{paths.push({url,body:JSON.parse(init.body)});return {ok:true,json:async()=>payload};},AbortSignal,Intl,Date,Blob,URL,console,setInterval(){},setTimeout(){},navigator:{clipboard:{writeText:async()=>{}}}};
+ const paths=[],context={document:{hidden:false,getElementById:node,querySelectorAll:selector=>selector==='[data-tab]'?tabs:periods,createElement:()=>make('a')},window:{Telegram:{WebApp:{initData:'synthetic',ready(){},expand(){}}}},fetch:async(url,init)=>{paths.push({url,body:JSON.parse(init.body)});return {ok:true,json:async()=>payload};},AbortController,AbortSignal,Intl,Date,Blob,URL,console,setInterval(){},setTimeout(){},clearTimeout(){},navigator:{clipboard:{writeText:async()=>{}}}};
  const tick=()=>new Promise(resolve=>setImmediate(resolve));runInNewContext(ADMIN_CLIENT,context);await tick();assert.match(node('content').innerHTML,/Ритм обращений/);
  for(const tab of tabs){tab.events.click();assert.ok(node('content').innerHTML.length>100);assert.equal(node('content').attrs['aria-labelledby'],tab.id);}
  tabs[2].events.click();assert.match(node('content').innerHTML,/Баланс провайдера/);assert.match(node('content').innerHTML,/0<\/td>/);
  periods[1].events.click();await tick();assert.equal(paths.at(-1).body.period,'week');await node('export').events.click();await tick();assert.equal(paths.at(-1).url,'/dashboard/export');assert.ok(node('export-dialog').open);assert.equal(JSON.parse(node('copy').value).users.total,1);
- context.window={};runInNewContext(ADMIN_CLIENT,context);await tick();assert.match(node('notice').innerHTML,/личном чате BOB/);
+ context.window={};runInNewContext(ADMIN_CLIENT,context);node('telegram-sdk').events.error();await tick();assert.match(node('notice').innerHTML,/личном чате BOB/);
  }finally{store.close();}
 });

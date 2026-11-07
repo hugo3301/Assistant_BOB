@@ -8,6 +8,7 @@ import {ogg} from '../tests/ogg-fixture.mjs';
 import {createGigaBridge} from '../src/gigachat-bridge.mjs';
 import {APP_ORIGIN} from '../src/calendars/pages.mjs';
 import {GOOGLE_SCOPES} from '../src/calendars/google.mjs';
+import {checkAdminBrowser} from './check-admin-browser.mjs';
 const googleEvents=new Map(),googleWrites=[];let googleVersion=0,groqCalls=0,gigaCalls=0,gigaAuthCalls=0;
 const googleDay=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
 googleEvents.set('remote-synthetic',{id:'remote-synthetic',etag:'"one"',summary:'Из Google',start:{dateTime:googleDay+'T10:00:00Z'},end:{dateTime:googleDay+'T11:00:00Z'}});
@@ -222,6 +223,9 @@ try{
   assert.equal((await request('/admin/providers/gigachat/probe/reserve',{amount:1},probeHeaders)).status,409);
 
   // The admin Mini App uses Telegram's signed identity, never ADMIN_SECRET in a URL.
+  const deployedAdmin=await request('/dashboard'),deployedAdminHtml=await deployedAdmin.text();
+  for(const nonce of [...deployedAdminHtml.matchAll(/<script[^>]+nonce="([^"]+)"/gu)].map(m=>m[1]))assert.ok(deployedAdmin.headers.get('Content-Security-Policy').includes("'nonce-"+nonce+"'"));
+  for(const scenario of [{},{sdk:'late'},{sdk:'error'},{sdk:'timeout'},{api:'denied'},{api:'timeout'},{moduleRuns:false}])assert.equal((await checkAdminBrowser(deployedAdminHtml,scenario)).settled,true);
   assert.equal((await request('/dashboard/data',{}, {Origin:APP_ORIGIN})).status,401);
   assert.equal((await plannerPost('/dashboard/data',208)).status,403);
   assert.equal((await request('/dashboard/data',{initData:signedPlanner(123)},{Origin:'https://other.example'})).status,401);

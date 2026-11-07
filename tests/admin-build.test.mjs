@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {adminClient} from '../src/admin/client.mjs';
+import {ADMIN_CLIENT} from '../src/admin/client-source.mjs';
+import {adminPage} from '../src/admin/page.mjs';
+import {checkAdminBrowser} from '../scripts/check-admin-browser.mjs';
+test('committed browser source matches the unbundled function and is never serialized by Worker',()=>assert.equal(ADMIN_CLIENT,'('+adminClient.toString().replace(/\r\n/gu,'\n')+')();'));
+for(const sdk of ['ready','late','error','timeout'])test('admin boot is bounded when Telegram SDK is '+sdk,async()=>{const html=await adminPage().text();assert.match(html,/<script id="telegram-sdk"[^>]+async/u);assert.equal((await checkAdminBrowser(html,{sdk})).settled,true);});
+for(const api of ['denied','network','timeout'])test('admin loader settles on API '+api,async()=>assert.equal((await checkAdminBrowser(await adminPage().text(),{api})).settled,true));
+test('classic watchdog replaces the spinner if the browser module cannot run',async()=>assert.equal((await checkAdminBrowser(await adminPage().text(),{moduleRuns:false})).hasFallback,true));
