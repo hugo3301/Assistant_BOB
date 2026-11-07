@@ -221,6 +221,20 @@ try{
   const secondProbe=await(await request('/admin/providers/gigachat/probe/reserve',{amount:1000},probeHeaders)).json();assert.ok(secondProbe.id);await request('/admin/providers/gigachat/probe/settle',{id:secondProbe.id,observed:100},probeHeaders);
   assert.equal((await request('/admin/providers/gigachat/probe/reserve',{amount:1},probeHeaders)).status,409);
 
+  // The admin Mini App uses Telegram's signed identity, never ADMIN_SECRET in a URL.
+  assert.equal((await request('/dashboard/data',{}, {Origin:APP_ORIGIN})).status,401);
+  assert.equal((await plannerPost('/dashboard/data',208)).status,403);
+  assert.equal((await request('/dashboard/data',{initData:signedPlanner(123)},{Origin:'https://other.example'})).status,401);
+  await until(async()=>Boolean((await providerDb.exec("SELECT SUM(n) AS n FROM ops_counts WHERE component='llm_gigachat'"))[0]?.n));
+  const adminResponse=await plannerPost('/dashboard/data',123);assert.equal(adminResponse.status,200);const ops=await adminResponse.json();
+  assert.equal(ops.users.total,10);assert.ok(ops.components.inbound.requests>0);assert.ok(ops.components.filtered.requests>0);assert.ok(ops.coverage.snapshots>0);
+  assert.equal(ops.components.llm_gigachat.usage.tokens.value,123);assert.equal(ops.components.llm_gigachat.usage.inputTokens.value,100);assert.equal(ops.providers.find(p=>p.provider==='groq').unit,'audio_seconds');
+  assert.doesNotMatch(JSON.stringify(ops),/synthetic-google-refresh|synthetic-client-secret|Проверка сервера|Личная 0|synthetic-groq-key|"member"|"label"/);
+  assert.equal((await(await plannerPost('/dashboard/data',123)).json()).cached,true);
+  const beforeAdmin=sent.length;await request('/telegram/webhook',update(720,'/admin'),{'X-Telegram-Bot-Api-Secret-Token':secret});
+  await until(()=>sent.slice(beforeAdmin).some(message=>message.reply_markup?.inline_keyboard?.flat().some(button=>button.web_app?.url.endsWith('/dashboard'))));
+  await request('/telegram/webhook',update(721,'/admin',208),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(beforeAdmin).some(message=>String(message.chat_id)==='208'&&message.text?.includes('только владельцу')));
+
   console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,plannerSignedIsolation:true,plannerCardDeepLink:true,bundledBrowserGeometry:true,arithmeticWithoutAI:true,unrelatedRequestsWithoutAI:true,delayedPeriodRefreshed:true,spokenWorkDuration:true,groqConsentAndSeparateQuota:true,gigaConsentNativeFunctionsAndSeparateQuota:true,gigaSignedRelayAndDurableClaim:true,gigaProbeHardLimit:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

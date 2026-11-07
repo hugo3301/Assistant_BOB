@@ -13,6 +13,7 @@
   "observability": {"enabled":false},
   "vars": {
     "ALPHA_ACCESS_MODE":"open",
+    "GROQ_KEY_EXPIRES_DATE":"2026-12-06",
     "CLOUDFLARE_ACCOUNT_ID":"f4b692a8756a3f726f790132ad1a5552",
     "AI_BUDGET_SEED_DAY":"2026-11-04",
     "AI_BUDGET_SEED_NEURONS":"6000"

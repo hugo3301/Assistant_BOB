@@ -20,7 +20,7 @@ export class SpeechAI{
    const response=await (0,this.fetcher)(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/run/@cf/openai/whisper-large-v3-turbo`,{method:'POST',headers:{Authorization:`Bearer ${this.token}`,'Content-Type':'application/json'},body:JSON.stringify({audio:Buffer.from(bytes).toString('base64'),task:'transcribe',language:'ru',vad_filter:true,condition_on_previous_text:false}),signal:AbortSignal.timeout(this.timeoutMs)});
    requireThat(response.ok,response.status===429?'AI_QUOTA':'VOICE_API',response.status===429?'Распознавание сейчас недоступно по лимиту. Можно написать текстом.':'Не удалось распознать голос. Попробуй ещё раз или напиши текстом.');
    const payload=await response.json();observed=payload.usage?.neurons??payload.result?.usage?.neurons??null;
-   requireThat(payload.success!==false&&typeof(payload.result??payload).text==='string','VOICE_API','Не удалось разобрать запись. Дела не изменены.');return{...transcription(payload),neurons:observed??amount};
+   requireThat(payload.success!==false&&typeof(payload.result??payload).text==='string','VOICE_API','Не удалось разобрать запись. Дела не изменены.');return{...transcription(payload),neurons:observed??amount,observedNeurons:observed};
   }catch(error){if(error instanceof BobError)throw error;throw new BobError(error.name==='TimeoutError'?'VOICE_TIMEOUT':'VOICE_NETWORK','Не дождался распознавания. Дела не изменены. Попробуй ещё раз или напиши текстом.');}
   finally{await this.budget.settle(reservation,observed);}
  }

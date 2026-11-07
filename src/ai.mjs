@@ -23,7 +23,7 @@ export class WorkersAI {
       observed = result.usage?.neurons ?? payload.usage?.neurons ?? null;
       requireThat(payload.success !== false && result.choices?.[0]?.message, 'AI_RESPONSE', 'Некорректный ответ ИИ.');
       requireThat(result.choices[0].finish_reason !== 'length', 'AI_TRUNCATED', 'Ответ ИИ не поместился. Уточни запрос короче.');
-      return { message: result.choices[0].message, usage: { neurons: observed, tokens: result.usage?.total_tokens ?? null } };
+      return { message: result.choices[0].message, usage: { neurons: observed, tokens: result.usage?.total_tokens ?? null,inputTokens:result.usage?.prompt_tokens??null,outputTokens:result.usage?.completion_tokens??null,cachedTokens:result.usage?.prompt_tokens_details?.cached_tokens??null } };
     } catch (error) {
       if (error instanceof BobError) throw error;
       throw new BobError(error.name === 'TimeoutError' ? 'AI_TIMEOUT' : 'AI_NETWORK', 'ИИ не ответил. Записи не изменены; команды и напоминания доступны.');
