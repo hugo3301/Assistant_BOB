@@ -1,4 +1,4 @@
-import {normalize,cleanUserText} from './dates.mjs';
+import {normalize,cleanUserText,hasTimeRange,stripTimeRanges} from './dates.mjs';
 const DATE=/сегодня|завтра|послезавтра|понедельник|вторник|сред[уае]|четверг|пятниц|суббот|воскресень|\d{1,2}\s*[./-]\s*\d{1,2}|\d+\s+(?:январ|феврал|март|апрел|мая|июн|июл|август|сентябр|октябр|ноябр|декабр)|через\s+(?:\d+|час|полчаса|день|неделю)/u;
 const CLOCK=/(?:^|\s)(?:в|к|около)\s+(?:\d{1,2}|семь|восемь|девять|десять|шесть|пять|четыре|три|два|час|пол[а-я]+)|\d{1,2}:\d{2}|вечером|утром|днем/u;
 export function naturalView(text){
@@ -14,7 +14,7 @@ export function naturalView(text){
  return{scope,...(/пар|расписан/u.test(source)?{kind:'classes'}:/задач/u.test(source)?{kind:'tasks'}:{})};
 }
 function rawTitle(text){return text.replace(/(?:[,;]\s*)?(?:напомни|напоминай|без напоминани)[\s\S]*$/iu,'').replace(/(?:сегодня|послезавтра|завтра|(?:на\s+)?следующ[а-я]*\s+)?(?:в\s+)?(?:понедельник[а-я]*|вторник[а-я]*|сред[уае]|четверг[а-я]*|пятниц[а-я]*|суббот[а-я]*|воскресень[а-я]*)/giu,' ').replace(/(?:к|до|на)?\s*\d{1,2}(?:-го|го)?\s+(?:январ[а-я]*|феврал[а-я]*|март[а-я]*|апрел[а-я]*|мая|июн[а-я]*|июл[а-я]*|август[а-я]*|сентябр[а-я]*|октябр[а-я]*|ноябр[а-я]*|декабр[а-я]*)(?:\s+\d{4})?/giu,' ').replace(/(?:к|до|на)?\s*\d{4}-\d{2}-\d{2}|(?:к|до|на)?\s*\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?/gu,' ').replace(/(?:через|спустя)\s+(?:\d+\s*(?:минут[а-я]*|час[а-я]*|дн[а-я]*|день|недел[а-я]*)|час|полчаса|день|неделю)/giu,' ').replace(/(?:сегодня|послезавтра|завтра)/giu,' ').replace(/(?:где[ -]?то\s*)?(?:(?:в|к|около|примерно)\s+)(?:\d{1,2}(?:[:.]\d{2})?|пол[а-я]+|семь|восемь|девять|десять|шесть|пять|четыре|три|два)(?:\s+(?:утра|утром|дня|днем|вечера|вечером|ночи))?/giu,' ').replace(/вечером|утром|днем|где[ -]?то/giu,' ').replace(/^\s*(?:у меня\s+)?(?:есть\s+)?/iu,'').replace(/\s+есть\s*$/iu,'').replace(/[«»"*]/gu,'').replace(/^[\s,:.\-]+|[\s,:.!?\-]+$/gu,'').replace(/\s+/gu,' ').trim();}
-function titleOf(text){const source=text.replace(/(^|[^а-я])((?:в|около)\s+\d{1,2})\.(\d{2})(?=$|[^а-я\d])/giu,'$1$2:$3'),title=rawTitle(source);return DATE.test(normalize(text))||CLOCK.test(normalize(text))?title.replace(/^(?:в|во|на|к|до)\s+|\s+(?:в|во|на|к|до)$/giu,'').trim():title;}
+function titleOf(text){const source=stripTimeRanges(text).replace(/(^|[^а-я])((?:в|около)\s+\d{1,2})\.(\d{2})(?=$|[^а-я\d])/giu,'$1$2:$3'),title=rawTitle(source);return DATE.test(normalize(text))||CLOCK.test(normalize(text))?title.replace(/^(?:в|во|на|к|до)\s+|\s+(?:в|во|на|к|до)$/giu,'').trim():title;}
 export function quickAction(text,store,owner){
  const original=cleanUserText(text).replace(/^(?:бро[, ]+|пожалуйста[, ]+|можешь\s+(?:мне\s+)?|давай\s+)/iu,'').replace(/^добавить\s/iu,'добавь ').replace(/^записать\s/iu,'запиши ').replace(/^перенести\s/iu,'перенеси ').replace(/^удалить\s/iu,'удали ').replace(/\?$/u,''),source=normalize(original),pending=store.user(owner).pending;
  if(original.length>500)return null;
@@ -39,6 +39,6 @@ export function quickAction(text,store,owner){
  const event=/встреча|пара(?:\s|$)|лекци[яю]|тренировк[ау]|созвон|собеседовани|занятие|прием|экзамен|консультаци[яю]/u.test(source);
  if(task||bareTask){const body=task?.[1]??original,title=titleOf(body);if(title.length<3)return null;return{text:original,calls:[{name:'create_task',args:{title,due_text:DATE.test(source)||CLOCK.test(source)||/(?:^|\s)(?:к|до|через|спустя)\s|дедлайн|срок|недел|месяц/u.test(source)?original:null}}]};}
  const eventPrefix=/^(?:(?:добавь|запиши|создай|запланируй)\s+)?(?:(?:у меня|есть)\s+)?(?:сегодня|завтра|послезавтра|в\s|во\s|на\s|через\s|встреча|пара|лекци[яю]|тренировк[ау]|созвон|собеседовани|занятие|прием|экзамен|консультаци[яю])/u.test(source);
- if(event&&eventPrefix&&(DATE.test(source)||CLOCK.test(source))&&!/начало|длительность|(?:^|\s)с\s+\d/u.test(source)){const body=original.replace(/^(?:добавь|запиши|создай|запланируй)\s+(?:мне\s+)?/iu,''),title=titleOf(body);if(title.length<3)return null;return{text:original,calls:[{name:'create_event',args:{title,when_text:original}}]};}
+ if((event&&eventPrefix&&(DATE.test(source)||CLOCK.test(source))&&!/начало|длительность/u.test(source))||hasTimeRange(source)){const body=original.replace(/^(?:добавь|запиши|создай|запланируй)\s+(?:мне\s+)?/iu,''),title=titleOf(body).replace(/^(?:надо|нужно|не забыть)\s+/iu,'');if(title.length<3)return null;return{text:original,calls:[{name:'create_event',args:{title,when_text:original}}]};}
  return null;
 }

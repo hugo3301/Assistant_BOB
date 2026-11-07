@@ -45,6 +45,38 @@ function languageText(value) {
 export function cleanUserText(value) {
   return String(value).replace(/^\s*```(?:text|markdown|md)?\s*\n/iu,'').replace(/\n\s*```\s*$/u,'').replace(/^\s*>+\s?/gmu,'').trim();
 }
+const RANGE_WORDS=Object.keys(NUMBER_WORDS).sort((a,b)=>b.length-a.length).join('|');
+const RANGE_NUMBER=`(?:\\d{1,2}|(?:${RANGE_WORDS})(?:\\s+(?:${RANGE_WORDS}))?)`;
+const RANGE_PART='(?:утра|утром|дня|днем|вечера|вечером|ночи|ночью)';
+const RANGE_CLOCK=`(?:\\d{1,2}[:.]\\d{2}|(?:пол\\s*|половин[ауы]\\s+)${RANGE_NUMBER}|без\\s+(?:четверти|${RANGE_NUMBER}\\s+минут[а-я]*)\\s+${RANGE_NUMBER}|${RANGE_NUMBER}|час(?:а|у)?)(?:\\s+час(?:а|ов)?)?(?:\\s+${RANGE_PART})?`;
+const RANGE_PATTERN=new RegExp(`(?<![а-я\\d])(?:с|от)\\s*(${RANGE_CLOCK})\\s*(?:до|[-–—])\\s*(${RANGE_CLOCK})(?![а-я\\d:.])|(?<![\\d.])((?:\\d{1,2}[:.]\\d{2}))\\s*[-–—]\\s*((?:\\d{1,2}[:.]\\d{2}))(?![\\d.])`,'giu');
+const NON_CLOCK_UNIT=/^\s*(?:руб|тыс|кг|км|страниц|штук|минут|числа|январ|феврал|март|апрел|мая|июн|июл|август|сентябр|октябр|ноябр|декабр)/iu;
+export function timeRanges(value){const source=String(value);return [...source.matchAll(RANGE_PATTERN)].filter(match=>!NON_CLOCK_UNIT.test(source.slice(match.index+match[0].length))).map(match=>({text:match[0],from:match[1]??match[3],to:match[2]??match[4],index:match.index,end:match.index+match[0].length}));}
+export function stripTimeRanges(value){let source=String(value);for(const range of timeRanges(source).reverse())source=source.slice(0,range.index)+' '+source.slice(range.end);return source;}
+export function hasTimeRange(value){const source=String(value).replace(/(?:с|от)\s*\d+(?:[.,]\d+)?\s*(?:до|[-–—])\s*\d+(?:[.,]\d+)?\s*(?:тыс[а-я]*|руб[а-я]*|минут[а-я]*|кг|км|штук[а-я]*)/giu,' ');if([...source.matchAll(RANGE_PATTERN)].length)return timeRanges(source).length>0;return new RegExp(`(?:^|[^а-я])(?:с|от)\\s*${RANGE_CLOCK}\\s*до(?=$|[^а-я])`,'iu').test(source);}
+
+function resolveTimeRange(source,options){
+ const ranges=timeRanges(source);
+ requireThat(ranges.length<=1,'TIME_RANGE_MULTIPLE','Здесь несколько интервалов. Укажи для каждого отдельное дело.');
+ if(!ranges.length){requireThat(!/(?:^|[^а-я])с\s+(?:утра|вечера|обеда)\s+до\s/iu.test(source),'TIME_RANGE_START','Во сколько начинается это дело? Например: «с09:00до16:00».',{append:true});requireThat(!hasTimeRange(source),'TIME_RANGE_END','Во сколько заканчивается это дело? Например: «с15:30до16:00».',{append:true});return null;}
+ const range=ranges[0],remainder=stripTimeRanges(source),tail=source.slice(range.end);
+ // A numeric interval of prices, counts or dates is not a clock interval.
+ requireThat(!/^\s*(?:руб|тыс|кг|км|страниц|штук|числа|январ|феврал|март|апрел|мая|июн|июл|август|сентябр|октябр|ноябр|декабр)/iu.test(tail),'TIME_RANGE_AMBIGUOUS','Это диапазон времени? Уточни часы начала и окончания.');
+ const dotClocks=[range.from,range.to].every(value=>/^\d{1,2}\.\d{2}$/u.test(value));
+ if(dotClocks&&[range.from,range.to].every(value=>{const [h,m]=value.split('.').map(Number);return h>=1&&h<=31&&m>=1&&m<=12;}))requireThat(/сегодня|завтра|послезавтра|понедельник|вторник|сред[уае]|четверг|пятниц|суббот|воскресень|\d{4}-\d{2}-\d{2}|\d+\s+[а-я]+/iu.test(remainder),'TIME_RANGE_AMBIGUOUS','Это даты или часы? Для времени можно написать «с05:11до06:11».');
+ const parts=[...new Set([...languageText(source).matchAll(new RegExp(`(?<![а-я])(${RANGE_PART})(?![а-я])`,'gu'))].map(match=>match[1]))];
+ function endpoint(value,isEnd=false){const normalized=languageText(value).replace(/^час(?:а|у)?(?=$|\s)/u,'1');if(isEnd&&/^24(?:[:.]00)?$/u.test(normalized))return{hour:0,minute:0,clock:'00:00',endOfDay:true};return clockCandidates('в '+normalized+(parts.length===1&&!new RegExp(RANGE_PART,'u').test(normalized)?' '+parts[0]:''));}
+ const from=endpoint(range.from),to=endpoint(range.to,true);requireThat(from&&to,'TIME_RANGE_CLOCK','Уточни часы начала и окончания.');
+ const explicitNext=/следующ(?:его|ий)\s+(?:дня|день)|на\s+следующий\s+день/iu.test(tail);
+ const cleanRemainder=remainder.replace(/следующ(?:его|ий)\s+(?:дня|день)|на\s+следующий\s+день/giu,' ');
+ const context=stripTimeRanges(options.contextText??''),start=resolveDate(cleanRemainder+' в '+from.clock,{...options,contextText:context,requireTime:true});
+ let offset=explicitNext||to.endOfDay?1:0;
+ if(!offset&&to.clock<from.clock){requireThat(from.hour>=18&&to.hour<=8,'TIME_RANGE_ORDER','Конец раньше начала. Это переход через полночь? Укажи окончание на следующий день.');offset=1;}
+ const endDay=addDays(start.day,offset),endAt=localToUtc(endDay,to.clock,start.timezone),duration=(Date.parse(endAt)-Date.parse(start.at))/60000;
+ requireThat(Number.isInteger(duration)&&duration>0&&duration<=1440,'TIME_RANGE_DURATION','Интервал должен длиться от1минуты до24часов. Уточни начало и конец.');
+ const other=clockCandidates(cleanRemainder);requireThat(!other||other.clock===from.clock,'TIME_RANGE_CONFLICT','Кроме диапазона указано другое время. Какой интервал сохранить?');
+ return {...start,source,timeRange:true,endAt,endDay,duration};
+}
 function clockCandidates(value) {
   const text = languageText(value).replace(/(?:через|спустя|за)\s+(?:\d+\s*(?:дн[а-я]*|день|сут[а-я]*|недел[а-я]*)|неделю|день)/gu,' '), found = [];
   const periods = [...text.matchAll(/(?:^|[^а-я])(утра|утром|дня|днем|вечера|вечером|ночи|ночью)(?=$|[^а-я])/gu)].map(match=>match[1]);
@@ -113,6 +145,7 @@ function calendarCandidates(value, today) {
   return unique[0]??null;
 }
 export function resolveDate(phrase, {now,timezone='Asia/Tomsk',requireTime=false,allowPast=false,contextText='',defaultToday=false}={}) {
+  const range=resolveTimeRange(String(phrase??''),{now,timezone,requireTime,allowPast,contextText,defaultToday});if(range)return range;
   const source=String(phrase??''),text=languageText(source),context=languageText(contextText);
   requireThat(text.length>0 && text.length<=1500,'DATE_MISSING','На какой день?',{append:true});
   requireThat(!/кажд|еженед|ежеднев|раз[а]?\s+в\s+недел/u.test(text),'REPEAT_UNSUPPORTED','Для еженедельных занятий пока нужна /repeat. Например: /repeat пн,ср,пт 18:00 60 Зал');

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BobError, requireThat } from './errors.mjs';
-import { resolveDate, verifyDatePhrase, normalize, formatDate, cleanUserText,dayAt } from './dates.mjs';
+import { resolveDate, verifyDatePhrase, normalize, formatDate, cleanUserText,dayAt,hasTimeRange,stripTimeRanges } from './dates.mjs';
 import { selectTarget, allowDeadlineChange, isNewRequest, validatePermission } from './policy.mjs';
 import { decodeCalls } from './tools.mjs';
 import { overview } from './views.mjs';
@@ -51,13 +51,14 @@ export class Assistant {
         if (name === 'complete_task' || name === 'plan_work') requireThat(target.kind === 'task', 'WRONG_KIND', 'Для этого действия нужна задача.');
       }
       let date = null, field = null;
-      if (name === 'create_task' && args.due_text) field = 'due_text';
+      if (name === 'create_task' && (args.due_text||hasTimeRange(text))) field = 'due_text';
       if (name === 'change_deadline') field = 'due_text';
       if (['create_event', 'move_event', 'plan_work'].includes(name)) field = 'when_text';
       if (field) {
         try {
-          verifyDatePhrase(args[field], text);
-          let phrase = args[field];
+          const sourcePhrase=args[field]??text,currentSource=text.includes('\nУточнение:')?text.split('\nУточнение:').at(-1):text;
+          verifyDatePhrase(sourcePhrase, text);
+          let phrase = (field==='when_text'||name==='create_task')&&hasTimeRange(currentSource)?currentSource:sourcePhrase;
           const position = normalize(text).indexOf(normalize(phrase));
           if (position >= 0 && !/моск|мск/u.test(normalize(phrase))) {
             const zone = /^\s+(по\s+москве|мск)(?=\s|[,.!?]|$)/u.exec(normalize(text).slice(position + normalize(phrase).length));
@@ -79,10 +80,12 @@ export class Assistant {
         } catch (error) { error.details = { ...error.details, index, field }; throw error; }
       }
       if (name === 'create_task' && !args.due_text && /(?:к|до)\s+\d{1,2}\s+[а-я]+/iu.test(text)) throw new BobError('EXPLICIT_DEADLINE_MISSING', 'В сообщении указан срок; его нужно сохранить.');
-      const duration = durationFromText(text);
+      const latestText=text.includes('\nУточнение:')?text.split('\nУточнение:').at(-1):text;
+      const statedDuration=durationFromText(hasTimeRange(latestText)?latestText:text),duration=date?.timeRange?date.duration:statedDuration;
+      if(date?.timeRange&&statedDuration!==null)requireThat(statedDuration===duration,'TIME_RANGE_DURATION','Длительность не совпадает с началом и концом. Какой интервал верный?');
       if (name === 'plan_work') requireThat(Number.isInteger(duration) && duration > 0 && duration <= 1440, 'DURATION_MISSING', 'Сколько времени выделить на работу? Например: «на час» или «на 45 минут».');
       if (duration !== null) requireThat(duration > 0 && duration <= 1440, 'DURATION_RANGE', 'Длительность должна быть от 1 до 1440 минут.');
-      if (date?.at && ['create_event', 'move_event', 'plan_work'].includes(name)) {
+      if (date?.at && (['create_event', 'move_event', 'plan_work'].includes(name)||name==='create_task'&&date.timeRange)) {
         const start = Date.parse(date.at), end = start + (duration ?? target?.duration ?? 1) * 60000;
         const busy = items.filter(item => item.id !== target?.id && item.kind !== 'task' && item.at);
         requireThat(!busy.some(item => start < Date.parse(item.at) + (item.duration ?? 1) * 60000 && end > Date.parse(item.at)), 'TIME_CONFLICT', 'На это время уже есть дело. Укажи другое время.');
@@ -94,6 +97,13 @@ export class Assistant {
         intervals.push([start, end]);
       }
       const minutes = reminderFromText(text, target ? target.reminder_minutes : user.reminder_minutes);
+      if(name==='create_task'&&date?.timeRange){
+        requireThat(!/(?:срок|дедлайн|(?:к|до)\s*(?:\d|сегодня|завтра|послезавтра))/iu.test(stripTimeRanges(text)),'TIME_RANGE_TASK_DEADLINE','Укажи отдельно срок сдачи и интервал работы: их нужно сохранить раздельно.');
+        const id=`task-${randomUUID().slice(0,8)}`,title=args.title.trim();
+        prepared.push({kind:'create',item:{id,owner,kind:'task',title,day:null,at:null,duration:null,parent_id:null},reminderMinutes:null});
+        prepared.push({kind:'create',item:{id:`work-${randomUUID().slice(0,8)}`,owner,kind:'work',title:`Работа: ${title}`,day:date.day,at:date.at,approximate:date.approximate,duration,parent_id:id},reminderMinutes:minutes});
+        continue;
+      }
       if (name.startsWith('create_') || name === 'plan_work') {
         const kind = name === 'create_task' ? 'task' : name === 'plan_work' ? 'work' : 'event';
         const title = name === 'plan_work' ? `Работа: ${target.title}` : args.title.trim();
@@ -133,7 +143,7 @@ export class Assistant {
       if (pending?.kind === 'date') {
         calls = structuredClone(pending.calls);
         const args = calls[pending.index].args;
-        args[pending.field] = text;
+        args[pending.field] = pending.rangeEndMissing&&!hasTimeRange(text)?pending.originalText+' '+text.replace(/^\s*в\s*/iu,''):pending.rangeStartMissing&&!hasTimeRange(text)?pending.originalText.replace(/с\s+(?:утра|вечера|обеда)\s+до/iu,'с '+text.replace(/^\s*в\s*/iu,'')+' до'):text;
       } else if (pending?.kind === 'target') {
         const number = /^\s*(\d+)\s*$/.exec(text);
         const choices = pending.candidates.filter(candidate => this.store.item(owner, candidate.id)?.status === 'open');
@@ -185,12 +195,12 @@ export class Assistant {
         } catch (error) {
           if (!(error instanceof BobError)) throw error;
           const expiresAt = new Date(Date.parse(this.clock()) + 86400000).toISOString();
-          if (error.details?.field) return commit({ status: 'clarify', text: error.message, changed: 0, usage, pending: { kind: 'date', originalText: effectiveText, referenceAt, calls, index: error.details.index, field: error.details.field, append: Boolean(error.details.append), expiresAt } });
+          if (error.details?.field) return commit({ status: 'clarify', text: error.message, changed: 0, usage, pending: { kind: 'date', originalText: effectiveText, referenceAt, calls, index: error.details.index, field: error.details.field, rangeEndMissing:error.code==='TIME_RANGE_END',rangeStartMissing:error.code==='TIME_RANGE_START',append: Boolean(error.details.append), expiresAt } });
           if (['TARGET_AMBIGUOUS', 'TARGET_MISMATCH'].includes(error.code)) {
             const candidates = error.details.candidates ?? [];
             return commit({ status: 'clarify', text: `${error.message}\n${candidates.map((item, index) => `${index + 1}. ${item.title} [${item.id}]`).join('\n')}`, changed: 0, usage, pending: { kind: 'target', originalText: effectiveText, referenceAt, calls, index: error.details.index, candidates, expiresAt } });
           }
-          if (['DEADLINE_PERMISSION', 'DURATION_MISSING', 'BUSY_DURATION_UNKNOWN', 'TIME_CONFLICT', 'BATCH_CONFLICT', 'AFTER_DEADLINE', 'WRONG_KIND', 'REPEAT_UNSUPPORTED'].includes(error.code)) return commit({ status: 'clarify', text: error.message, changed: 0, usage, pending: { kind: 'question', originalText: effectiveText, referenceAt, expiresAt } });
+          if (error.code.startsWith('TIME_RANGE_')||['DEADLINE_PERMISSION', 'DURATION_MISSING', 'BUSY_DURATION_UNKNOWN', 'TIME_CONFLICT', 'BATCH_CONFLICT', 'AFTER_DEADLINE', 'WRONG_KIND', 'REPEAT_UNSUPPORTED'].includes(error.code)) return commit({ status: 'clarify', text: error.message, changed: 0, usage, pending: { kind: 'question', originalText: effectiveText, referenceAt, expiresAt } });
           lastError = error; calls = null;
           if (attempt + 1 >= this.maxCalls) throw error;
         }
