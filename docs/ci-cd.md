@@ -16,7 +16,16 @@ Production environment ограничивается main. Единственны
 
 `deploy-ci.mjs` проверяет свежий CI receipt, чистый tracked checkout, текущий main и ожидаемые name/account из wrangler.jsonc. Wrangler публикует только код с `--keep-vars`, без `--secrets-file`: прежние Worker secrets сохраняются. BUILD_COMMIT содержит SHA выпуска. После deploy проверяются health с этим SHA, открытая регистрация/Mini App и отказ401 без авторизации к приватному API. Генераций и сообщений нет.
 
-Для включения CD нужны настроенные environment secret и BOB_CD_ENABLED. До этого deploy job пропускается. Срок конкретного ключа и результаты настоящих runs фиксируются после настройки; наличие YAML само по себе не означает работоспособный CD.
+CD включён7ноября2026: BOB_CD_ENABLED=true и единственный environment secret CLOUDFLARE_API_TOKEN. Пользователь отдельно разрешил ключ «BOB GitHub CD» до7декабря2026,14:00Томск (07:00UTC); API подтвердил active и точный expiry. Локальная копия хранится в исключённом .env как CLOUDFLARE_GITHUB_CD_TOKEN, отдельно от WorkersAI и ручного deploy-ключей. Зашифрованный перенос удалён; GitHub secret загружен LibSodium sealed box. Значения ключей в Git/логах отсутствуют.
+
+Проверено реально, commit eae60e063a5e236f963cc252de7e5e71afaff56f:
+
+- [CI42331700282](https://github.com/hugo3301/Assistant_BOB/actions/runs/42331700282): success, стандартный ubuntu-24.04/Node24,343Node-теста и полный workerd/SQLite.
+- [Первый CD42332066390](https://github.com/hugo3301/Assistant_BOB/actions/runs/42332066390): success, deploy и postdeploy-проверки. Публичный health вернул этот SHA, приватный planner/data без initData —401. Запросов к модели и Telegram в CD нет.
+- main требует check verify от GitHub Actions, запрещены force-push/удаление. Владельцу сохранён admin bypass для привычного прямого push; обычные участники должны пройти required CI.
+- Actions: только GitHub-owned, полные SHA обязательны, default token read-only, одобрение PR от workflow запрещено. Включены secret scanning/push protection, private vulnerability reporting и Dependabot security updates. Пустой Wiki выключен, описание/topics и удаление merged branches настроены.
+
+После изменения main автоматический workflow_run проходит ту же проверку точного SHA. Истёкший CD-ключ нужно заменить отдельным разрешённым ключом; его срок не продлевается самим pipeline.
 
 Netlify-мост публикуется отдельно вручную: каждая production-публикация расходует15credits Free. Его GigaChat/shared secrets уже на Netlify; PAT публикации после проверки отозван. В CD Worker не нужно снова публиковать мост или переносить его ключи в GitHub.
 

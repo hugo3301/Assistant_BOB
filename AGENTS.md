@@ -21,7 +21,8 @@
 - Общайся с пользователем по-русски, если он не попросил иначе.
 - Не переноси требования и решения из других проектов без проверки их применимости.
 
-- GitHub bob-wrh.29: README/MIT/SECURITY/CONTRIBUTING/шаблоны, .env.example, CI и CD подготовлены. npm run check:repo,343Nodeтеста и workerd/SQLite прошли локально. В harness восстановления исправлен подсчёт именно reply11/12 вместо всех Telegram сообщений: независимый alarm мог давать лишнее уведомление. CI push/PR main без productionkeys, actions pinned SHA. CD публикует только актуальный SHA успешного push CI, main-only environment, сохраняет Worker secrets; BUILD_COMMIT проверяется публичным health. GitHubAPI настроены read-only Actions/GitHub-owned actions, secret-scanning/pushprotection/private security reports/Dependabot. CD variablefalse до отдельно разрешённого GitHub deploy-only token; рабочие ключи бота вGitHub не передавать. docs/ci-cd.md.
+- GitHub bob-wrh.29: README/MIT/THIRD_PARTY_NOTICES/SECURITY/CONTRIBUTING/шаблоны/Dependabot оформлены. Реальный CI42331700282 и CD42332066390 success для eae60e0:343Nodeтеста,workerd/SQLite,healthexactSHA и privateplanner401. CI push/PR без productionkeys, actions fullSHA/GitHub-owned/read-only. CD включён BOB_CD_ENABLED=true,main-only environment,публикует только актуальный SHA успешного pushCI,сохраняетWorkersecrets. Отдельно разрешённый BOB GitHub CD ScriptsEdit+AccountSettingsRead толькотекущийCFaccount,APIactive/expiry7Dec2026 07UTC=14Томск; локально .env.CLOUDFLARE_GITHUB_CD_TOKEN,GitHubproduction.CLOUDFLARE_API_TOKEN sealedbox,никакихключейботавGitHub. mainrequiredverify/forcepushoff/deleteoff/owneradminbypass. Secret-scanning/pushprotection/private reports enabled. docs/ci-cd.md. НаpostCD0активныхдел/170done/7historicfailed,lastJob02:47доCD03:02; настройки07:00/60/Groqсохранились. Не восстанавливать старые2дела без просьбы: новые пользовательские задания шли во время работы.
+
 
 ## Задачи и решения
 
