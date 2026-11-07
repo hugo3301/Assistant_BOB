@@ -67,6 +67,10 @@ try{
   assert.equal((await request('/health')).status,200);
   assert.equal((await request('/admin/status')).status,404);
   assert.equal((await request('/providers/gigachat/claim',{id:'unknown',hash:'a'.repeat(64)})).status,404);
+  // Isolate delivery tests from an overdue daily digest with the same /today text.
+  // Digest retry/deduplication has its own controlled-clock ReminderWorker tests.
+  await status();const fixtureOwner=await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:'owner:123:v1'});
+  await fixtureOwner.exec("UPDATE users SET morning_time=NULL WHERE id='123'");
   assert.equal((await request('/telegram/webhook',update(1,'/start'))).status,404);
   assert.equal((await request('/telegram/webhook',update(2,'/start',456),{'X-Telegram-Bot-Api-Secret-Token':secret})).status,200);
   assert.equal((await request('/telegram/webhook',update(3,'Добавь задачу Проверка сервера к 12 ноября'),{'X-Telegram-Bot-Api-Secret-Token':secret})).status,200);
