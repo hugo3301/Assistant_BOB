@@ -1,0 +1,38 @@
+{
+  "date": "2026-11-07",
+  "netlifyDeployment": "6aee8d85791446c46c134f50",
+  "workerVersion": "79f17011-540d-4abd-a488-6f5d4d0453e4",
+  "synthetic": true,
+  "modelCalls": 2,
+  "chargedTokens": 684,
+  "approvedMaximumCalls": 2,
+  "approvedMaximumTokens": 10000,
+  "entries": [
+    {
+      "passed": true,
+      "http": 200,
+      "model": "GigaChat-3-Ultra:32.9.16.9",
+      "tokens": 342,
+      "ms": 3451,
+      "synthetic": true,
+      "productionItemWrites": false,
+      "telegramCalls": 0
+    },
+    {
+      "passed": true,
+      "http": 200,
+      "model": "GigaChat-3-Ultra:32.9.16.9",
+      "tokens": 342,
+      "ms": 1880,
+      "synthetic": true,
+      "productionItemWrites": false,
+      "telegramCalls": 0
+    }
+  ],
+  "netlifyFreeVerified": true,
+  "deployTokenRevoked": true,
+  "postRevocationAPIStatus": 401,
+  "postRevocationHealthStatus": 200,
+  "ownerOnly": true,
+  "selectedAutomatically": false
+}

@@ -33,4 +33,4 @@
 - [alwaysdata — тарифы](https://www.alwaysdata.com/en/offers/), [фактическая регистрация](https://www.alwaysdata.com/en/register/), [suspension/ограничения Free](https://help.alwaysdata.com/en/docs/admin-billing/profile/suspension/).
 
 
-Обновление7ноября: Vercel Google-signup дошёл до SMS, пользователь сообщил о проблеме доставки/номера. На странице подтверждена только временная ошибка Too many requests (60с), причины по региону/оператору не установлены. Подготовлена и локально проверена альтернативная упаковка того же моста для Netlify Free; проверены актуальные Node24/ESM/routing docs и signup через Google. Запрошено новое согласие на Netlify, до ответа ключи туда не отправляются. Статус публикации — docs/gigachat-bridge.md и bob-wrh.27.
+Обновление7ноября: Vercel остановился на SMS/429, причина по региону не установлена. После отдельного согласия создан Netlify Free и развернут подписанный buffered Node-мост. Health200/unsigned403, два синтетических вызова прошли (684токена). PAT отозван/API401, runtime работает; production открыт отдельно, previews private. Актуальный результат и ограничения: docs/gigachat-bridge.md, bob-wrh.27.
