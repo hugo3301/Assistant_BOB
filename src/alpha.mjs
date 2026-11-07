@@ -9,7 +9,7 @@ import {reminderFromText} from './assistant.mjs';
 import {nav,UI,minuteLabel} from './ui-kit.mjs';
 import {isNewRequest} from './policy.mjs';
 import {BulkActions} from './bulk-actions.mjs';
-import {quickAction} from './natural.mjs';
+import {quickActions} from './natural.mjs';
 import {conversationIntent} from './conversation.mjs';
 import {unrelatedRequest} from './input-scope.mjs';
 
@@ -60,7 +60,7 @@ export class Alpha {
     let argument = command?.[2]?.trim() ?? '';
     if(name==='timezone')argument=friendlyZone(argument)??argument;
     if(!name&&isCalendarAnswer(this.store,owner,text,this.clock()))name='calendar_choice';
-    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)){const quick=quickAction(text,this.store,owner);return this.assistant.handle(owner, quick?.text??text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId,requestText:requestText??text,...(quick?{applicationCalls:quick.calls}:{}) });}
+    if (!['start','help','settings','morning','timezone','remind','projects','project','area','done','remove','repeat','repeats','diet','status','ical','calendar_upload','calendar_choice','export'].includes(name)){const quick=quickActions(text,this.store,owner);return this.assistant.handle(owner, quick?.text??text.replace(/^(\/\w+)@mybob_robot\b/u, '$1'), { requestId,requestText:requestText??text,...(quick?{applicationCalls:quick.calls}:{}) });}
     this.store.ensureUser(owner); const now = this.clock();
     const claim = this.store.beginTurn(owner, requestId, requestText??(documentText === undefined ? text : text + '\n' + caption + '\n' + documentText), now);
     if (claim.cached) return { ...claim.cached, replayed: true };

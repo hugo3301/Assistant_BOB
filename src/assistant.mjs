@@ -7,6 +7,7 @@ import { overview } from './views.mjs';
 import {modelContext} from './context.mjs';
 import {conversationIntent,fastConversation} from './conversation.mjs';
 import {readDuration} from './duration.mjs';
+import {bindCallSources,splitRequests} from './requests.mjs';
 import {unrelatedRequest,planningIntent,PLANNING_ONLY} from './input-scope.mjs';
 
 export function reminderFromText(text, fallback) {
@@ -31,10 +32,13 @@ export class Assistant {
     const final = next.finally(() => { if (this.locks.get(owner) === final) this.locks.delete(owner); });
     this.locks.set(owner, final); return final;
   }
-  prepare(owner, calls, text, user, referenceAt = this.clock()) {
+  prepare(owner, calls, sourceText, user, referenceAt = this.clock()) {
+    calls=bindCallSources(calls,sourceText);
     const items = this.store.items(owner), prepared = [], targets = new Set(), intervals = [];
     for (const [index, call] of calls.entries()) {
       const { name, args } = call;
+      const text=call.sourceText??sourceText;
+      try {
       validatePermission(name, text);
       if (!['list_items', 'ask_user'].includes(name)) requireThat(!/кажд|еженед|ежеднев|раз[а]?\s+в\s+недел/iu.test(text), 'REPEAT_UNSUPPORTED', 'Серию пока нужно задать командой. Например: /repeat пн,ср,пт 18:00 60 Зал — занятия по часу в 18:00.');
       if (name === 'list_items') { prepared.push({ kind: 'read', scope: args.scope }); continue; }
@@ -110,6 +114,7 @@ export class Assistant {
         prepared.push({ kind: 'create', item: { id: `${kind}-${randomUUID().slice(0, 8)}`, owner, kind, title, day: date?.day ?? null, at: date?.at ?? null, approximate:date?.approximate??false, duration: kind === 'task' ? null : duration, parent_id: name === 'plan_work' ? target.id : null }, reminderMinutes: minutes });
       } else if (['change_deadline', 'move_event'].includes(name)) prepared.push({ kind: 'change', target, changes: { day: date.day, at: date.at, approximate:date.approximate, ...(name === 'move_event' && duration !== null ? { duration } : {}) }, reminderMinutes: minutes });
       else if (['complete_task', 'cancel_item'].includes(name)) prepared.push({ kind: 'change', target, changes: { status: name === 'complete_task' ? 'completed' : 'cancelled' } });
+      } catch(error){if(error instanceof BobError)error.details={...error.details,index};throw error;}
     }
     return prepared;
   }
@@ -139,11 +144,14 @@ export class Assistant {
       if (pending && (pending.expiresAt <= this.clock() || isNewRequest(text))) pending = null;
       const effectiveText = pending ? `${pending.originalText}\nУточнение: ${text}` : text;
       const referenceAt = pending?.referenceAt ?? this.clock();
+      requireThat(splitRequests(effectiveText).length<=5,'BATCH_LIMIT','В одном сообщении можно разобрать до 5 поручений. Раздели список на несколько сообщений — пока ничего не изменено.');
       let calls = applicationCalls??null;
       if (pending?.kind === 'date') {
         calls = structuredClone(pending.calls);
         const args = calls[pending.index].args;
-        args[pending.field] = pending.rangeEndMissing&&!hasTimeRange(text)?pending.originalText+' '+text.replace(/^\s*в\s*/iu,''):pending.rangeStartMissing&&!hasTimeRange(text)?pending.originalText.replace(/с\s+(?:утра|вечера|обеда)\s+до/iu,'с '+text.replace(/^\s*в\s*/iu,'')+' до'):text;
+        const clause=calls[pending.index].sourceText??pending.originalText;
+        args[pending.field] = pending.rangeEndMissing&&!hasTimeRange(text)?clause.replace(/(до)(?![а-я])/iu,'$1 '+text.replace(/^\s*в\s*/iu,'')):pending.rangeStartMissing&&!hasTimeRange(text)?clause.replace(/с\s+(?:утра|вечера|обеда)\s+до/iu,'с '+text.replace(/^\s*в\s*/iu,'')+' до'):text;
+        calls[pending.index].sourceText=clause+'\nУточнение: '+args[pending.field];
       } else if (pending?.kind === 'target') {
         const number = /^\s*(\d+)\s*$/.exec(text);
         const choices = pending.candidates.filter(candidate => this.store.item(owner, candidate.id)?.status === 'open');
@@ -155,8 +163,15 @@ export class Assistant {
         if (chosen) {
           calls = structuredClone(pending.calls);
           calls[pending.index].args.target_id = chosen.id;
+          calls[pending.index].sourceText=(calls[pending.index].sourceText??pending.originalText)+'\nВыбрано: '+chosen.id;
           // An explicit choice in the displayed list is application evidence.
           pending.selectedId = chosen.id;
+        }
+      } else if(pending?.kind==='question'&&pending.calls&&Number.isInteger(pending.index)){
+        calls=structuredClone(pending.calls);const call=calls[pending.index];
+        call.sourceText=(call.sourceText??pending.originalText)+'\nУточнение: '+text;
+        if(['TIME_CONFLICT','BATCH_CONFLICT','AFTER_DEADLINE','TIME_RANGE_DURATION'].includes(pending.code)){
+          const field=call.name==='create_task'||call.name==='change_deadline'?'due_text':'when_text';call.args[field]=text;
         }
       }
       let lastError = null, usage = [];
@@ -177,6 +192,7 @@ export class Assistant {
         try {
           const sourceText = pending?.selectedId ? `${effectiveText}\nВыбрано: ${pending.selectedId}` : effectiveText;
           requireThat(!calls.some(call=>call.name==='reply_user'),'CONVERSATION_DISABLED','Общие ответы ИИ отключены. Доступно планирование дел.');
+          calls=bindCallSources(calls,sourceText);
           const prepared = this.prepare(owner, calls, sourceText, user, referenceAt);
           if(prepared[0]?.kind==='answer')return commit({status:'ok',text:prepared[0].text,changed:0,usage});
           if (prepared[0]?.kind === 'question') return commit({ status: 'clarify', text: prepared[0].question, changed: 0, usage, pending: { kind: 'question', originalText: effectiveText, referenceAt, expiresAt: new Date(Date.parse(this.clock()) + 86400000).toISOString() } });
@@ -200,7 +216,7 @@ export class Assistant {
             const candidates = error.details.candidates ?? [];
             return commit({ status: 'clarify', text: `${error.message}\n${candidates.map((item, index) => `${index + 1}. ${item.title} [${item.id}]`).join('\n')}`, changed: 0, usage, pending: { kind: 'target', originalText: effectiveText, referenceAt, calls, index: error.details.index, candidates, expiresAt } });
           }
-          if (error.code.startsWith('TIME_RANGE_')||['DEADLINE_PERMISSION', 'DURATION_MISSING', 'BUSY_DURATION_UNKNOWN', 'TIME_CONFLICT', 'BATCH_CONFLICT', 'AFTER_DEADLINE', 'WRONG_KIND', 'REPEAT_UNSUPPORTED'].includes(error.code)) return commit({ status: 'clarify', text: error.message, changed: 0, usage, pending: { kind: 'question', originalText: effectiveText, referenceAt, expiresAt } });
+          if (error.code.startsWith('TIME_RANGE_')||['DEADLINE_PERMISSION', 'DURATION_MISSING', 'BUSY_DURATION_UNKNOWN', 'TIME_CONFLICT', 'BATCH_CONFLICT', 'AFTER_DEADLINE', 'WRONG_KIND', 'REPEAT_UNSUPPORTED'].includes(error.code)) return commit({ status: 'clarify', text: error.message, changed: 0, usage, pending: { kind: 'question', originalText: effectiveText, referenceAt, calls,index:error.details?.index,code:error.code,expiresAt } });
           lastError = error; calls = null;
           if (attempt + 1 >= this.maxCalls) throw error;
         }

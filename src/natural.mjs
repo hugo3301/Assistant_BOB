@@ -1,5 +1,6 @@
 import {normalize,cleanUserText,hasTimeRange,stripTimeRanges} from './dates.mjs';
-const DATE=/сегодня|завтра|послезавтра|понедельник|вторник|сред[уае]|четверг|пятниц|суббот|воскресень|\d{1,2}\s*[./-]\s*\d{1,2}|\d+\s+(?:январ|феврал|март|апрел|мая|июн|июл|август|сентябр|октябр|ноябр|декабр)|через\s+(?:\d+|час|полчаса|день|неделю)/u;
+import {splitRequests} from './requests.mjs';
+const DATE=/сегодня|завтра|послезавтра|понедельник|вторник|сред[уае]|четверг|пятниц|суббот|воскресень|\d{1,2}\s*[./-]\s*\d{1,2}|\d+\s*(?:январ|феврал|март|апрел|мая|июн|июл|август|сентябр|октябр|ноябр|декабр)|через\s+(?:\d+|час|полчаса|день|неделю)/u;
 const CLOCK=/(?:^|\s)(?:в|к|около)\s+(?:\d{1,2}|семь|восемь|девять|десять|шесть|пять|четыре|три|два|час|пол[а-я]+)|\d{1,2}:\d{2}|вечером|утром|днем/u;
 export function naturalView(text){
  const source=normalize(cleanUserText(text)).replace(/[.!?]+$/u,'').replace(/^ч[ео](?:\s+там)?\s/u,'что ');
@@ -20,7 +21,7 @@ export function quickAction(text,store,owner){
  if(original.length>500)return null;
  if(/отменя|отменили|не\s+будет|уже\s+(?:прошл|был|состоял)|не\s+нуж/u.test(source))return null;
  if(pending&&['date','target','question'].includes(pending.kind)&&! /^(?:добав|запиши|создай|надо|нужно|сдать)/u.test(source))return null;
- if(/\?|(?:^|\s)не\s+(?:добав|запис|удал|убир|отмен|сдал|сделал|готов|заверш)|^(?:как|если|можно ли|почему|расскажи|что будет)/u.test(source)||/кажд|еженед|ежеднев|раз[а]?\s+в\s+недел|\n|;|\sи\s|потом|затем/u.test(source))return null;
+ if(/\?|(?:^|\s)не\s+(?:добав|запис|удал|убир|отмен|сдал|сделал|готов|заверш)|^(?:как|если|можно ли|почему|расскажи|что будет)/u.test(source)||/кажд|еженед|ежеднев|раз[а]?\s+в\s+недел|\n|;|потом|затем/u.test(source))return null;
  let action=/^(?:удали|убери|отмени)\s+/u.test(source)?'cancel_item':/^(?:готово|сдал|сделал|завершил|закончил|отметь\s+(?:как\s+)?(?:готов|выполн))|\s(?:сдал|сделал|готово|выполнено|закончил)$/u.test(source)?'complete_task':/^(?:перенеси|перенести|передвинь|сдвинь|измени\s+(?:срок|дедлайн))/u.test(source)?'move':null;
  if(action){
   if(/(?:^|\s)все(?:х)?(?:\s|$)/u.test(source))return null;
@@ -41,4 +42,11 @@ export function quickAction(text,store,owner){
  const eventPrefix=/^(?:(?:добавь|запиши|создай|запланируй)\s+)?(?:(?:у меня|есть)\s+)?(?:сегодня|завтра|послезавтра|в\s|во\s|на\s|через\s|встреча|пара|лекци[яю]|тренировк[ау]|созвон|собеседовани|занятие|прием|экзамен|консультаци[яю])/u.test(source);
  if((event&&eventPrefix&&(DATE.test(source)||CLOCK.test(source))&&!/начало|длительность/u.test(source))||hasTimeRange(source)){const body=original.replace(/^(?:добавь|запиши|создай|запланируй)\s+(?:мне\s+)?/iu,''),title=titleOf(body).replace(/^(?:надо|нужно|не забыть)\s+/iu,'');if(title.length<3)return null;return{text:original,calls:[{name:'create_event',args:{title,when_text:original}}]};}
  return null;
+}
+export function quickActions(text,store,owner){
+ const clauses=splitRequests(text);if(clauses.length===1)return quickAction(text,store,owner);
+ if(clauses.length>5||store.user(owner).pending)return null;
+ const parsed=clauses.map(clause=>({clause,action:quickAction(clause.text,store,owner)}));
+ if(parsed.some(part=>!part.action||part.action.calls.length!==1))return null;
+ return{text:cleanUserText(text),calls:parsed.flatMap(({clause,action})=>action.calls.map(call=>({...call,sourceText:action.text,sourceIndex:clause.index})))};
 }
