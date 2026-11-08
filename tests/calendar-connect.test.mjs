@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Store } from "../src/store.mjs";
 import { CalendarService } from "../src/calendars/service.mjs";
 import { readTicket } from "../src/calendars/security.mjs";
-import { APP_ORIGIN, GOOGLE_CALLBACK } from "../src/calendars/pages.mjs";
+import { APP_ORIGIN, GOOGLE_CALLBACK, setupPage, choosePage } from "../src/calendars/pages.mjs";
 import {
   GOOGLE_SCOPES,
   GoogleCalendar,
@@ -21,6 +21,50 @@ const NOW = "2026-11-05T00:00:00.000Z",
     Origin: APP_ORIGIN,
   };
 const queryTicket = (html) => /name="ticket" value="([^"]+)"/u.exec(html)?.[1];
+
+test("calendar forms preserve their Origin without disclosing ticket paths in Referer", async () => {
+  for (const response of [setupPage("google", "synthetic-ticket"), setupPage("yandex", "synthetic-ticket"), choosePage({}, [], "synthetic-ticket")]) {
+    // Fetch Standard: no-referrer nulls Origin on navigation POST, unlike cors fetch.
+    assert.equal(response.headers.get("Referrer-Policy"), "strict-origin");
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.match(response.headers.get("Content-Security-Policy"), /form-action 'self'/u);
+    const html = await response.text();
+    assert.doesNotMatch(html, /<meta[^>]+name="referrer"/iu);
+    assert.match(html, /method="post"/u);
+  }
+  assert.match(await setupPage("yandex", "synthetic-ticket").text(), /rel="noreferrer"/u);
+});
+
+test("calendar form rejects null, absent and foreign Origin before credentials or ticket consumption", async () => {
+  for (const provider of ["google", "yandex"]) {
+    const { store, service, calls } = setup();
+    try {
+      const message = await service.message("", { data: "k|connect|" + provider }, "origin-test"),
+        ticket = new URL(message.replyMarkup.inline_keyboard[0][0].url).searchParams.get("ticket"),
+        page = await service.http(req("/calendars/connect", { query: "?ticket=" + ticket })),
+        cookie = page.headers.get("set-cookie").split(";")[0],
+        path = provider === "google" ? "/calendars/google/start" : "/calendars/yandex",
+        body = { ticket, login: "synthetic@yandex.ru", password: "synthetic-app-password" };
+      assert.equal(page.headers.get("Referrer-Policy"), "strict-origin");
+      for (const origin of [null, "null", "https://evil.example"]) {
+        const request = req(path, { method: "POST", cookie, body });
+        if (origin === null) request.headers.delete("Origin"); else request.headers.set("Origin", origin);
+        const response = await service.http(request);
+        assert.equal(response.status, 400);
+        assert.match(await response.text(), /Открой подключение через кнопку/u);
+        assert.equal(calls.length, 0);
+        assert.equal(store.db.prepare("SELECT used FROM calendar_setups").get().used, 0);
+      }
+      assert.equal((await service.http(req(path, { method: "POST", body }))).status, 400);
+      assert.equal(calls.length, 0);
+      // A valid same-origin form reaches the provider (synthetic only).
+      if (provider === "yandex") service.fetcher = async () => { calls.push({ provider }); return new Response(null, { status: 401 }); };
+      const accepted = await service.http(req(path, { method: "POST", cookie, body }));
+      if (provider === "google") assert.equal(accepted.status, 303);
+      else { assert.equal(calls.length, 1); assert.doesNotMatch(await accepted.text(), /Открой подключение через кнопку/u); }
+    } finally { store.close(); }
+  }
+});
 test("an expired Google refresh grant requests reconnect instead of claiming a temporary server outage", async () => {
   await assert.rejects(
     googleToken(

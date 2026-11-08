@@ -10,7 +10,9 @@ export function page(title, content, { status = 200, cookie } = {}) {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
-        "Referrer-Policy": "no-referrer",
+        // HTML form POSTs with no-referrer carry Origin:null. Keep the origin
+        // for CSRF checks, but never disclose a path/query containing a ticket.
+        "Referrer-Policy": "strict-origin",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy":
           "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://accounts.google.com; base-uri 'none'; frame-ancestors 'none'",
