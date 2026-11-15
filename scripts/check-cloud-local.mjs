@@ -26,7 +26,7 @@ const configuration=convertV4MiniflareOptions({unsafeInspectDurableObjects:true,
   if(url.hostname==='bob-giga-test.vercel.app'){
     const bridge=createGigaBridge({secret:'synthetic-relay-secret-for-runtime-123456',authKey:'synthetic-giga-authorization',fetcher:async(target,init)=>{assert.equal(target,'https://assistant-bob-alpha.assistant-bob.workers.dev/providers/gigachat/claim');return mf.dispatchFetch('https://bob.local/providers/gigachat/claim',init);},gigaFetcher:async(target,init)=>{
       if(target.includes('/oauth')){gigaAuthCalls++;assert.equal(init.headers.Authorization,'Basic synthetic-giga-authorization');return Response.json({access_token:'synthetic-giga-access-token-long',expires_at:Date.now()+1800000});}
-      gigaCalls++;const body=JSON.parse(init.body);assert.equal(body.model,'GigaChat-3-Ultra');assert.equal(body.model_options.parallel_tool_calls,true);return Response.json({messages:[{role:'assistant',content:[{function_call:{name:'create_task',arguments:{title:'Тест GigaChat',due_text:'12 ноября'}}}]}],finish_reason:'function_call',usage:{total_tokens:123,input_tokens:100,output_tokens:23}});
+      gigaCalls++;const body=JSON.parse(init.body);assert.equal(body.model,'GigaChat-3-Ultra');assert.equal(body.model_options.parallel_tool_calls,true);return Response.json({messages:[{role:'assistant',content:[{function_call:{name:'create_task',arguments:{title:'Тест GigaChat',due_text:calendarDay}}}]}],finish_reason:'function_call',usage:{total_tokens:123,input_tokens:100,output_tokens:23}});
     }});return bridge(request);
   }
   if(url.hostname==='api.giga.chat'||url.hostname==='ngw.devices.sberbank.ru')throw Error('Worker must not call GigaChat directly or hold its key');
@@ -56,7 +56,7 @@ const configuration=convertV4MiniflareOptions({unsafeInspectDurableObjects:true,
     const body=await request.json();if(failNextSend&&url.pathname.endsWith('/sendMessage')){failNextSend=false;return Response.json({ok:false,parameters:{retry_after:1}},{status:429});}sent.push(body);return Response.json({ok:true,result:{message_id:sent.length}});
   }
   if(url.hostname==='api.cloudflare.com'&&url.pathname.endsWith('/whisper-large-v3-turbo')){asrCalls++;return Response.json({success:true,result:{text:asrText,segments:[{no_speech_prob:0.01,avg_logprob:-0.2}]},usage:{neurons:8}});}
-  if(url.hostname==='api.cloudflare.com'){const body=await request.json(),chat=body.tools?.length===1&&body.tools[0].function?.name==='reply_user',work=body.messages?.at(-1)?.content?.includes('час поработать');return Response.json({choices:[{finish_reason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'one',function:{name:chat?'reply_user':work?'plan_work':'create_task',arguments:JSON.stringify(chat?{answer:'Рекурсия — вызов функции из неё самой.'}:work?{target_id:null,when_text:'завтра в 15:00',duration_minutes:60}:{title:'Проверка сервера',due_text:'12 ноября'})}}]}}],usage:{neurons:1}});}
+  if(url.hostname==='api.cloudflare.com'){const body=await request.json(),chat=body.tools?.length===1&&body.tools[0].function?.name==='reply_user',work=body.messages?.at(-1)?.content?.includes('час поработать');return Response.json({choices:[{finish_reason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'one',function:{name:chat?'reply_user':work?'plan_work':'create_task',arguments:JSON.stringify(chat?{answer:'Рекурсия — вызов функции из неё самой.'}:work?{target_id:null,when_text:'завтра в 15:00',duration_minutes:60}:{title:'Проверка сервера',due_text:calendarDay})}}]}}],usage:{neurons:1}});}
   throw Error('Unexpected external request in cloud test');
 }});
 let mf=new Miniflare(configuration);
@@ -74,12 +74,12 @@ try{
   await fixtureOwner.exec("UPDATE users SET morning_time=NULL WHERE id='123'");
   assert.equal((await request('/telegram/webhook',update(1,'/start'))).status,404);
   assert.equal((await request('/telegram/webhook',update(2,'/start',456),{'X-Telegram-Bot-Api-Secret-Token':secret})).status,200);
-  assert.equal((await request('/telegram/webhook',update(3,'Добавь задачу Проверка сервера к 12 ноября'),{'X-Telegram-Bot-Api-Secret-Token':secret})).status,200);
+  assert.equal((await request('/telegram/webhook',update(3,'Добавь задачу Проверка сервера к '+calendarDay),{'X-Telegram-Bot-Api-Secret-Token':secret})).status,200);
   await until(async()=> (await status()).jobs.some(row=>row.status==='done') && sent.some(message=>message.text?.includes('Проверка сервера')));
   const initialStatus = await status();
   if (initialStatus.items !== 1) { const db = await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:'owner:123:v1'}); console.log(JSON.stringify({diagnostic:initialStatus,syntheticReplies:sent,calls,outbox:await db.exec('SELECT payload,last_error FROM telegram_outbox')})); }
   assert.equal(initialStatus.items,1);assert.ok(sent.some(message=>message.text?.includes('Проверка сервера')));
-  await request('/telegram/webhook',update(3,'Добавь задачу Проверка сервера к 12 ноября'),{'X-Telegram-Bot-Api-Secret-Token':secret});
+  await request('/telegram/webhook',update(3,'Добавь задачу Проверка сервера к '+calendarDay),{'X-Telegram-Bot-Api-Secret-Token':secret});
   await new Promise(resolve=>setTimeout(resolve,1300));assert.equal((await status()).items,1);assert.equal(sent.filter(message=>message.text?.includes('Проверка сервера')).length,1);
   await mf.dispose(); mf=new Miniflare(configuration);
   assert.equal((await status()).items,1);
@@ -134,12 +134,12 @@ try{
     await until(()=>sent.some(message=>String(message.chat_id)===String(200+i)&&message.text?.includes('Выбери свой город')));
     const welcome=sent.find(message=>String(message.chat_id)===String(200+i)&&message.text?.includes('Выбери свой город'));
     await request('/telegram/webhook',{update_id:250+i,callback_query:{id:`zone-${i}`,from:{id:200+i},data:welcome.reply_markup.inline_keyboard.flat().find(button=>button.text==='Томск').callback_data,message:{message_id:2000+i,chat:{id:200+i,type:'private'},from:{id:999,is_bot:true}}}},{'X-Telegram-Bot-Api-Secret-Token':secret});
-    await request('/telegram/webhook',update(300+i,`Добавь задачу Личная ${i} к 12 ноября`,200+i),{'X-Telegram-Bot-Api-Secret-Token':secret});
+    await request('/telegram/webhook',update(300+i,`Добавь задачу Личная ${i} к ${calendarDay}`,200+i),{'X-Telegram-Bot-Api-Secret-Token':secret});
     await until(()=>sent.some(message=>String(message.chat_id)===String(200+i)&&message.text?.includes(`Личная ${i}`)));
   }
   const registry=await(await request('/admin/registry',null,{Authorization:`Bearer ${admin}`})).json();assert.equal(registry.members.filter(member=>member.active).length,10);assert.equal((await status()).items,2);
   for(let i=0;i<9;i++){const db=await mf.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:`owner:${200+i}:v1`});const rows=await db.exec("SELECT owner,title FROM items WHERE status='open'");assert.equal(rows.length,1);assert.equal(rows[0].owner,String(200+i));assert.equal(rows[0].title,`Личная ${i}`);}
-  await request('/telegram/webhook',update(400,'Зафиксируй задачу Проверка сервера к 12 ноября',200),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.some(message=>String(message.chat_id)==='200'&&message.text?.includes('Проверка сервера')));
+  await request('/telegram/webhook',update(400,'Зафиксируй задачу Проверка сервера к '+calendarDay,200),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.some(message=>String(message.chat_id)==='200'&&message.text?.includes('Проверка сервера')));
   const metered=await(await request('/admin/registry',null,{Authorization:`Bearer ${admin}`})).json();assert.equal(metered.usage.spent,1);assert.equal(metered.usage.reserved,0);
   await request('/telegram/webhook',update(401,'/members',201),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.some(message=>String(message.chat_id)==='201'&&message.text?.includes('доступен владельцу')));
   const voice=update(500,'',200);delete voice.message.text;voice.message.voice={file_id:'voice-one',file_unique_id:'unique-voice-one',duration:10,file_size:voiceBody.length,mime_type:'audio/ogg'};
@@ -210,7 +210,7 @@ try{
   await request('/telegram/webhook',providerCallback(713,'p|choose|gigachat'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(gigaBefore).some(message=>message.text?.includes('защищённый мост BOB')));
   const gigaConsent=sent.slice(gigaBefore).find(message=>message.text?.includes('защищённый мост BOB')).reply_markup.inline_keyboard[0][0].callback_data;
   await request('/telegram/webhook',providerCallback(714,gigaConsent),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(gigaBefore).some(message=>message.text?.includes('Текст: GigaChat')));
-  const gigaTask=update(715,'Запланируй задачу Тест GigaChat к 12 ноября',208);await request('/telegram/webhook',gigaTask,{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(gigaBefore).some(message=>message.text?.includes('Тест GigaChat')&&message.text?.includes('Добавлено')));
+  const gigaTask=update(715,'Запланируй задачу Тест GigaChat к '+calendarDay,208);await request('/telegram/webhook',gigaTask,{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(gigaBefore).some(message=>message.text?.includes('Тест GigaChat')&&message.text?.includes('Добавлено')));
   await request('/telegram/webhook',gigaTask,{'X-Telegram-Bot-Api-Secret-Token':secret});await new Promise(resolve=>setTimeout(resolve,100));assert.equal(gigaCalls,1);assert.equal(gigaAuthCalls,1);assert.equal(calls.filter(host=>host==='api.cloudflare.com').length,cfBeforeGiga);assert.equal((await status()).providers.selected.gigachat,false);
   assert.equal((await providerDb.exec("SELECT spent FROM provider_usage WHERE provider='gigachat' AND member='*' AND bucket='pool'"))[0].spent,123);
   assert.equal((await providerDb.exec("SELECT COUNT(*) AS count FROM provider_dispatches"))[0].count,1);
@@ -250,6 +250,18 @@ try{
   await deliveryDb.exec('DELETE FROM telegram_jobs WHERE id=9000');const privacyBefore=sent.length;await request('/telegram/webhook',update(9002,'/status'),{'X-Telegram-Bot-Api-Secret-Token':secret});await until(()=>sent.slice(privacyBefore).some(message=>message.text?.includes('пароль или ключ доступа')));
   assert.equal(calls.filter(host=>host==='api.cloudflare.com').length,beforePrivacyAI);assert.equal(sent.some(message=>message.text?.includes(syntheticCredential)),false);
 
-  console.log(JSON.stringify({localCloudRuntime:'passed',realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,plannerSignedIsolation:true,plannerCardDeepLink:true,bundledBrowserGeometry:true,arithmeticWithoutAI:true,unrelatedRequestsWithoutAI:true,delayedPeriodRefreshed:true,spokenWorkDuration:true,groqConsentAndSeparateQuota:true,gigaConsentNativeFunctionsAndSeparateQuota:true,gigaSignedRelayAndDurableClaim:true,gigaProbeHardLimit:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
+  // Recover into a different object ID, never the existing tenant. No real APIs.
+  assert.equal((await request('/admin/backups/snapshot')).status,404);
+  const backupResponse=await request('/admin/backups/snapshot?owner=123',null,{Authorization:`Bearer ${admin}`});assert.equal(backupResponse.status,200);assert.equal(backupResponse.headers.get('Cache-Control'),'no-store');
+  const backup=await backupResponse.json();assert.equal(backup.owner,'123');assert.ok(backup.data.items.length>=2);assert.ok(!JSON.stringify(backup).includes('synthetic-client-secret'));
+  assert.equal((await request('/admin/backups/restore?owner=123',{confirm:'restore-empty:123',backup},{Authorization:`Bearer ${admin}`})).status,409);
+  const recoveryRuntime=new Miniflare({...configuration,resourcePersistencePath:resolve('work/backup-recovery-'+Date.now())});
+  try{
+    const namespace=await recoveryRuntime.getDurableObjectNamespace('BOB'),recovery=namespace.get(namespace.idFromName('owner:123:v1'));
+    const restored=await recovery.fetch('https://internal/backup/restore',{method:'POST',headers:{'x-bob-user':'123','Content-Type':'application/json'},body:JSON.stringify({backup})});assert.equal(restored.status,200);assert.equal((await restored.json()).paused,true);
+    const restoredStatus=await(await recovery.fetch('https://internal/status',{headers:{'x-bob-user':'123'}})).json();assert.equal(restoredStatus.items,backup.data.items.filter(item=>item.status==='open').length);assert.deepEqual(restoredStatus.settings,(await status()).settings);
+    const restoredDb=await recoveryRuntime.unsafeGetDurableObjectStorage('bob-cloud-test','BobObject',{name:'owner:123:v1'});assert.equal((await restoredDb.exec("SELECT value FROM runtime_health WHERE key='paused'"))[0].value,'1');assert.equal((await restoredDb.exec('SELECT COUNT(*) AS n FROM telegram_outbox'))[0].n,0);
+  }finally{await recoveryRuntime.dispose();}
+  console.log(JSON.stringify({localCloudRuntime:'passed',isolatedBackupRestore:true,realSqliteDurableObject:true,ownerCheck:true,webhookAuthentication:true,durableJobAndOutbox:true,noDuplicate:true,calendarFileDownloaded:true,calendarAutoImported:true,calendarReuploadPreservedCount:true,callbackAcknowledgedAndEdited:true,bulkConfirmedAndUndone:true,deliveryRetryAndRestart:true,replyOrderPreserved:true,tenIsolatedUsers:true,sharedBudgetMetered:true,membersSurviveRestart:true,voiceDownloadedTranscribedAndSaved:true,voiceReplayWithoutSTT:true,googleOAuthCookieAndPKCE:true,twoWayCalendarSqlite:true,yandexCalDAVSqlite:true,calendarCredentialsEncrypted:true,plannerSignedIsolation:true,plannerCardDeepLink:true,bundledBrowserGeometry:true,arithmeticWithoutAI:true,unrelatedRequestsWithoutAI:true,delayedPeriodRefreshed:true,spokenWorkDuration:true,groqConsentAndSeparateQuota:true,gigaConsentNativeFunctionsAndSeparateQuota:true,gigaSignedRelayAndDurableClaim:true,gigaProbeHardLimit:true,latency,externalNetwork:'stubbed',aiCalls:calls.filter(host=>host==='api.cloudflare.com').length}));
 }finally{await mf.dispose();}
 

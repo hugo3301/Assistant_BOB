@@ -27,6 +27,7 @@ import {plannerPublic} from './planner/public.mjs';
 import {refreshDelivery} from './delivery-view.mjs';
 import {adminPublic} from './admin/public.mjs';
 import {tenantSnapshot} from './ops.mjs';
+import {createBackup,restoreBackup,BACKUP_LIMIT} from './backup.mjs';
 export {ControlObject} from './control-worker.mjs';
 const VERSION = '0.2.0-alpha';
 function equalSecret(actual, expected) { if (typeof actual !== 'string' || typeof expected !== 'string' || expected.length < 24) return false; const a = new TextEncoder().encode(actual), b = new TextEncoder().encode(expected); return a.length === b.length && timingSafeEqual(a,b); }
@@ -35,6 +36,21 @@ function object(env) {return{fetch:(url,init)=>callUser(env,String(env.TELEGRAM_
 export default {
   async fetch(request,env,ctx) {
     const path = new URL(request.url).pathname;
+    if(path.startsWith('/admin/backups/')){
+      const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
+      if(!equalSecret(request.headers.get('Authorization'),`Bearer ${env.ADMIN_SECRET}`))return new Response('Not found',{status:404,headers});
+      try{
+        const action=path.slice('/admin/backups/'.length),owner=new URL(request.url).searchParams.get('owner')??String(env.TELEGRAM_OWNER_ID);
+        requireThat(/^[1-9]\d{0,19}$/.test(owner),'BACKUP_OWNER','Некорректный владелец.');
+        requireThat((action==='snapshot'&&request.method==='GET')||(['restore','resume'].includes(action)&&request.method==='POST'&&env.BACKUP_RESTORE_ENABLED==='true'),'BACKUP_DISABLED','Восстановление отключено.');
+        requireThat((await callControl(env,'/access',{owner,start:false})).allowed,'BACKUP_ACCESS','Нет доступа к этому хранилищу.');
+        if(action==='snapshot')return callUser(env,owner,'/backup/snapshot');
+        let body='',size=0;const reader=request.body?.getReader();requireThat(reader,'BACKUP_INVALID','Нет тела запроса.');const decoder=new TextDecoder();
+        while(true){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;requireThat(size<=BACKUP_LIMIT+1024,'BACKUP_INVALID','Копия слишком велика.');body+=decoder.decode(value,{stream:true});}body+=decoder.decode();
+        const data=JSON.parse(body);requireThat(data.confirm===`${action==='restore'?'restore-empty':'resume'}:${owner}`,'BACKUP_CONFIRM','Нужно явное подтверждение.');
+        return await callUser(env,owner,'/backup/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+      }catch(error){return Response.json({code:error instanceof BobError?error.code:'BACKUP_INVALID',text:'Операция резервирования отклонена; проверь инструкцию восстановления.'},{status:409,headers});}
+    }
     if(path==='/dashboard'||path.startsWith('/dashboard/'))return adminPublic(request,env);
     if(path==='/admin/ops'&&request.method==='GET'&&equalSecret(request.headers.get('Authorization'),`Bearer ${env.ADMIN_SECRET}`)){try{return Response.json(await callControl(env,'/ops',{owner:String(env.TELEGRAM_OWNER_ID),period:new URL(request.url).searchParams.get('period')??'day'}),{headers:{'Cache-Control':'no-store'}});}catch(error){return Response.json({code:error instanceof BobError?error.code:'OPS_UNAVAILABLE'},{status:error?.code==='OPS_RATE'?429:400,headers:{'Cache-Control':'no-store'}});}}
     if (path === '/health' && request.method === 'GET') return Response.json({service:'BOB',version:VERSION,status:'ok',commit:/^[a-f0-9]{40}$/.test(env.BUILD_COMMIT??'')?env.BUILD_COMMIT:null,features:{voice:true,registration:env.ALPHA_ACCESS_MODE==='open'?'open':'invite',userLimit:env.ALPHA_ACCESS_MODE==='open'?null:10,ui:2,calendarSync:'two-way',planner:true,adminDashboard:true,timeRanges:true,multipleRequests:true}},{headers:{'Cache-Control':'no-store'}});
@@ -92,6 +108,20 @@ export class BobObject extends DurableObject {
   async fetch(request) {
     this.initialize(request.headers.get('x-bob-user'));
     const path = new URL(request.url).pathname, now = new Date().toISOString();
+    if(path==='/backup/snapshot'){const snapshot=createBackup(this.store,this.owner,now);requireThat(!containsCredential(JSON.stringify(snapshot),this.secrets),'BACKUP_SECRET','Копия содержит распознанный ключ доступа.');return Response.json(snapshot,{headers:{'Cache-Control':'no-store'}});}
+    if(path==='/backup/restore'){
+      requireThat(!this.runner,'BACKUP_BUSY','Хранилище занято.');
+      const data=await request.json();const result=restoreBackup(this.store,this.owner,data.backup,now);
+      this.paused=true;this.store.db.prepare("INSERT OR REPLACE INTO runtime_health VALUES ('paused','1')").run();
+      this.store.db.prepare("INSERT OR REPLACE INTO runtime_health VALUES ('backup_restored','1')").run();await this.ctx.storage.deleteAlarm();return Response.json(result,{headers:{'Cache-Control':'no-store'}});
+    }
+    if(path==='/backup/resume'){
+      requireThat(this.paused&&this.store.db.prepare("SELECT value FROM runtime_health WHERE key='backup_restored'").get()?.value==='1','BACKUP_STATE','Нет ожидающего восстановления.');
+      // Suppress notices that became overdue while the restored copy was inspected.
+      this.store.db.prepare("UPDATE reminders SET status='skipped' WHERE status IN ('pending','claimed') AND fire_at<=?").run(now);
+      this.store.db.prepare('UPDATE ui_profiles SET morning_from=? WHERE owner=?').run(addDays(dayAt(now,this.store.user(this.owner).timezone),1),this.owner);
+      this.paused=false;this.store.db.prepare("DELETE FROM runtime_health WHERE key IN ('paused','backup_restored')").run();await this.wake();return Response.json({resumed:true},{headers:{'Cache-Control':'no-store'}});
+    }
     if (path === '/status') return Response.json({version:VERSION,latency:this.latency(),providers:{available:providerAvailability(this.env,this.owner),selected:{groq:this.providers.selected('groq'),gigachat:this.providers.selected('gigachat')}},settings:{timezone:this.store.user(this.owner).timezone,morningTime:this.store.user(this.owner).morning_time,reminderMinutes:this.store.user(this.owner).reminder_minutes},usage:this.store.usage(now.slice(0,10)),health:this.store.db.prepare('SELECT * FROM runtime_health').all(),jobs:this.store.db.prepare('SELECT status,COUNT(*) AS count FROM telegram_jobs GROUP BY status').all(),outbox:this.store.db.prepare('SELECT status,COUNT(*) AS count FROM telegram_outbox GROUP BY status').all(),reminders:this.store.db.prepare('SELECT status,COUNT(*) AS count FROM reminders GROUP BY status').all(),items:this.store.items(this.owner).length,calendars:{configured:Boolean(this.env.CALENDAR_SECRET_KEY),googleConfigured:Boolean(this.env.GOOGLE_CLIENT_ID&&this.env.GOOGLE_CLIENT_SECRET),connections:this.store.db.prepare("SELECT provider,status,is_default,last_ok,last_error FROM calendar_connections WHERE owner=? AND status!='off' ORDER BY created_at").all(this.owner),linked:this.store.db.prepare("SELECT COUNT(*) AS count FROM calendar_links WHERE owner=?").get(this.owner).count,conflicts:this.store.db.prepare("SELECT COUNT(*) AS count FROM calendar_conflicts WHERE owner=? AND status='pending'").get(this.owner).count}});
     if(path==='/calendars/http')return this.calendars.http(request);
     if(path==='/planner/data'||path==='/planner/item'){try{return await this.observe('planner',()=>this.planner.http(request));}catch(error){return Response.json({code:error instanceof BobError?error.code:'PLANNER_UNAVAILABLE',text:error instanceof BobError?error.message:'План временно недоступен. Попробуй обновить.'},{status:error?.code==='PLANNER_RATE'?429:error?.code==='PLANNER_ACCESS'?403:error?.code==='PLANNER_ITEM'?404:500,headers:{'Cache-Control':'no-store'}});}finally{this.ctx.waitUntil(this.flushOps());}}
